@@ -1,85 +1,94 @@
 # m3u-extra
 
-Een kleine webinterface voor `N_m3u8DL-RE`. Plak een gekopieerd downloadcommando, start de taak en volg de voortgang en het live logboek in je browser. De image bevat alvast `N_m3u8DL-RE`, `ffmpeg` en `mp4decrypt`, dus je hoeft niets lokaal te installeren.
+A small web interface for `N_m3u8DL-RE`. Paste a copied download command, start the job and follow the progress and live log in your browser. The Docker image already includes `N_m3u8DL-RE`, `ffmpeg` and `mp4decrypt`, so nothing needs to be installed locally.
 
-## Snel starten
+## Quick start
 
-Met Docker:
+With Docker:
 
 ```bash
 docker run -d \
   --name ndl-web \
   -p 8000:8000 \
-  -v /pad/naar/downloads:/downloads \
+  -v /path/to/downloads:/downloads \
   -e TZ=Europe/Brussels \
   crisperfx/m3u-extra:latest
 ```
 
-Open daarna `http://<server-of-nas-ip>:8000`.
+Then open `http://<server-or-nas-ip>:8000`.
 
-Met Docker Compose gebruik je de meegeleverde `docker-compose.yml`:
+With Docker Compose, use the included `docker-compose.yml`:
 
 ```bash
 docker compose up -d
 ```
 
-De bestanden komen terecht in de map die je aan `/downloads` koppelt.
+Files are stored in the folder you mount at `/downloads`.
 
-## Gebruik
+## How to use
 
-1. Kopieer het volledige `N_m3u8DL-RE`-commando in het tekstveld.
-2. Klik op **Start download**.
-3. Het live logboek opent in een apart tabblad. Je ziet daar ook het percentage en de huidige stap.
-4. Onder **Bestanden** vind je de afgemaakte `.mkv`-bestanden. Daar kun je ze ook downloaden of verwijderen.
+1. Paste the full `N_m3u8DL-RE` command into the text field.
+2. Click **Start download**.
+3. The live log opens in a separate tab, with the current phase and progress percentage.
+4. Under **Files** you can find, download or delete finished `.mkv` files.
 
-Actieve taken blijven in het geheugen van de container. Bestanden blijven op schaal staan zolang de `/downloads`-map correct gekoppeld is.
+Active jobs live in the container memory. Files remain on disk as long as the `/downloads` mount is correct.
 
-## Instellingen
+## Settings
 
-Kopieer `.env.example` naar `.env` als je Docker Compose gebruikt. Vul alleen in wat je nodig hebt.
+Copy `.env.example` to `.env` when using Docker Compose. Fill in only what you need.
 
-| Instelling | Wat het doet | Standaard |
+| Setting | What it does | Default |
 | --- | --- | --- |
-| `TZ` | Tijdzone voor de container | `Europe/Brussels` in het voorbeeld |
-| `MAX_CONCURRENT` | Hoeveel downloads tegelijk mogen draaien | `3` |
-| `WEB_USER` en `WEB_PASSWORD` | Inloggen met gebruikersnaam en wachtwoord. Allebei leeg betekent geen inlogbeveiliging. | leeg |
-| `EXT_TOKEN` | Geheime token voor de browser-extensie. Alleen nodig als je downloads vanuit de extensie wilt starten. | leeg |
+| `TZ` | Container time zone | `Europe/Brussels` in the example |
+| `MAX_CONCURRENT` | Number of downloads that can run at the same time | `3` |
+| `WEB_USER` and `WEB_PASSWORD` | Basic login. Leave both empty to disable login protection. | empty |
+| `EXT_TOKEN` | Secret token for the browser extension. Only needed if you want to start downloads from the extension. | empty |
 
-Voor de browser-extensie vul je als server-URL `http://<server-of-nas-ip>:8000` in en als token dezelfde waarde als `EXT_TOKEN`.
+For the browser extension, set the server URL to `http://<server-or-nas-ip>:8000` and use the same value as `EXT_TOKEN` for the token.
+
+## Browser extension
+
+The modified extension is included in `extension/`:
+
+- `WidevineProxy2-1.2.7.crx` — drag this file onto `chrome://extensions` with Developer mode enabled.
+- `WidevineProxy2-1.2.7.zip` — unpack it, then use **Load unpacked** and select the `src` folder.
+
+The source files are in `extension/src`. The server URL and token are not hardcoded; open the extension options and enter them yourself.
 
 ## Updates
 
-Bij een push naar `main` bouwt GitHub automatisch een nieuwe image en publiceert die naar Docker Hub. De nieuwste versie staat op `crisperfx/m3u-extra:latest`; per commit komt er ook een `sha-<commit>`-tag bij. Versies met een `v`-tag, zoals `v1.0.0`, krijgen dezelfde tag op Docker Hub.
+Every push to `main` builds a new image and publishes it to Docker Hub. The latest build is available as `crisperfx/m3u-extra:latest`; each commit also gets a `sha-<commit>` tag. Tags such as `v1.0.0` are published with the same tag on Docker Hub.
 
-Om te updaten:
+To update:
 
 ```bash
 docker compose pull
 docker compose up -d
 ```
 
-Of bij een losse container:
+Or for a standalone container:
 
 ```bash
 docker pull crisperfx/m3u-extra:latest
 docker stop ndl-web
 docker rm ndl-web
-docker run -d --name ndl-web -p 8000:8000 -v /pad/naar/downloads:/downloads crisperfx/m3u-extra:latest
+docker run -d --name ndl-web -p 8000:8000 -v /path/to/downloads:/downloads crisperfx/m3u-extra:latest
 ```
 
-## Zelf bouwen
+## Building locally
 
-Wil je toch lokaal bouwen:
+If you want to build the image yourself:
 
 ```bash
 docker build -t crisperfx/m3u-extra:latest .
 ```
 
-## Automatische publicatie
+## Automatic publishing
 
-De workflow staat in `.github/workflows/docker-hub.yml`. Voor publicatie zijn twee repository secrets nodig:
+The workflow is in `.github/workflows/docker-hub.yml`. Publishing needs two repository secrets:
 
 - `DOCKERHUB_USERNAME`
-- `DOCKERHUB_TOKEN` (een Docker Hub access token, geen accountwachtwoord)
+- `DOCKERHUB_TOKEN` (a Docker Hub access token, not your account password)
 
-Zonder die secrets blijft de code werken, maar wordt er geen image gepubliceerd. Zet de Docker Hub-repository op **Public** als iedereen de image zonder login moet kunnen ophalen.
+Without these secrets the code still works, but no image is published. Set the Docker Hub repository to **Public** if everyone should be able to pull the image without logging in.

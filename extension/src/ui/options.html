@@ -1,0 +1,117 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>WidevineProxy2 - Opties</title>
+    <link rel="stylesheet" href="options.css">
+</head>
+<body>
+<main class="app">
+    <h1>WidevineProxy2 <span>opties</span></h1>
+
+    <section class="section">
+        <h2>Server</h2>
+        <label class="field">
+            <span>Server URL</span>
+            <input type="url" id="server_url" placeholder="http://host:poort" spellcheck="false" autocomplete="off">
+        </label>
+        <label class="field">
+            <span>API-token</span>
+            <input type="text" id="ext_token" placeholder="API-token" spellcheck="false" autocomplete="off">
+        </label>
+        <button type="button" id="test_server">Test server</button>
+    </section>
+
+    <section class="section">
+        <h2>Knopactie</h2>
+        <label class="field">
+            <span>Wat doet de knop bij een key-regel?</span>
+            <select id="button_action">
+                <option value="copy_only">Alleen kopiëren</option>
+                <option value="send_only">Alleen verzenden</option>
+                <option value="copy_send">Kopiëren + verzenden</option>
+            </select>
+        </label>
+        <p class="hint">De knop heet <code>copy</code>, <code>send</code> of <code>copy+send</code>, afhankelijk van deze keuze.</p>
+    </section>
+
+    <section class="section">
+        <h2>Streamselectie</h2>
+        <label class="field">
+            <span>Video (<code>-sv</code>)</span>
+            <select id="select_video_preset"></select>
+        </label>
+        <label class="check">
+            <input type="checkbox" id="select_video_for_best">
+            <span>Beste beschikbare bij geen match (<code>for=best</code>)</span>
+        </label>
+        <label class="field" id="select_video_custom" hidden>
+            <span>Aangepaste video-selectie</span>
+            <input type="text" id="select_video" spellcheck="false" autocomplete="off">
+        </label>
+
+        <fieldset class="group">
+            <legend>Audio (<code>-sa</code>)</legend>
+            <div class="mode-row">
+                <label class="check"><input type="radio" name="select_audio_mode" id="select_audio_mode_none" value="none"> Geen</label>
+                <label class="check"><input type="radio" name="select_audio_mode" id="select_audio_mode_all" value="all"> <code>for=all</code></label>
+                <label class="check"><input type="radio" name="select_audio_mode" id="select_audio_mode_langs" value="langs"> Talen</label>
+                <label class="check"><input type="radio" name="select_audio_mode" id="select_audio_mode_custom" value="custom"> Aangepast</label>
+            </div>
+            <div class="langs" id="select_audio_langs" hidden>
+                <label class="check"><input type="checkbox" id="select_audio_lang_nl"> Nederlands (<code>nl|nld</code>)</label>
+                <label class="check"><input type="checkbox" id="select_audio_lang_en"> Engels (<code>en|eng</code>)</label>
+                <label class="field">
+                    <span>Extra taalcodes</span>
+                    <input type="text" id="select_audio_lang_extra" placeholder="fr|fre" spellcheck="false" autocomplete="off">
+                </label>
+            </div>
+            <label class="field" id="select_audio_custom" hidden>
+                <span>Aangepaste audio-selectie</span>
+                <input type="text" id="select_audio" spellcheck="false" autocomplete="off">
+            </label>
+            <label class="check">
+                <input type="checkbox" id="select_audio_for_best">
+                <span>Beste beschikbare bij geen match (<code>for=best</code>)</span>
+            </label>
+        </fieldset>
+
+        <fieldset class="group">
+            <legend>Ondertiteling (<code>-ss</code>)</legend>
+            <div class="mode-row">
+                <label class="check"><input type="radio" name="select_subtitle_mode" id="select_subtitle_mode_none" value="none"> Geen</label>
+                <label class="check"><input type="radio" name="select_subtitle_mode" id="select_subtitle_mode_all" value="all"> <code>for=all</code></label>
+                <label class="check"><input type="radio" name="select_subtitle_mode" id="select_subtitle_mode_langs" value="langs"> Talen</label>
+                <label class="check"><input type="radio" name="select_subtitle_mode" id="select_subtitle_mode_custom" value="custom"> Aangepast</label>
+            </div>
+            <div class="langs" id="select_subtitle_langs" hidden>
+                <label class="check"><input type="checkbox" id="select_subtitle_lang_nl"> Nederlands (<code>nl|nld</code>)</label>
+                <label class="check"><input type="checkbox" id="select_subtitle_lang_en"> Engels (<code>en|eng</code>)</label>
+                <label class="field">
+                    <span>Extra taalcodes</span>
+                    <input type="text" id="select_subtitle_lang_extra" placeholder="fr|fre" spellcheck="false" autocomplete="off">
+                </label>
+            </div>
+            <label class="field" id="select_subtitle_custom" hidden>
+                <span>Aangepaste ondertitel-selectie</span>
+                <input type="text" id="select_subtitle" spellcheck="false" autocomplete="off">
+            </label>
+            <label class="check">
+                <input type="checkbox" id="select_subtitle_for_best">
+                <span>Beste beschikbare bij geen match (<code>for=best</code>)</span>
+            </label>
+        </fieldset>
+
+        <p class="hint">Video gebruikt de dropdown. Audio en ondertiteling zijn óf <code>for=all</code> óf één of meerdere talen; meerdere talen worden gecombineerd als <code>lang=nl|nld|en|eng</code>.</p>
+    </section>
+
+    <div class="actions">
+        <button type="button" id="save" class="primary">Opslaan</button>
+        <button type="button" id="reset">Standaardwaarden</button>
+    </div>
+    <p id="status" role="status"></p>
+</main>
+<script src="options.js"></script>
+</body>
+</html>
