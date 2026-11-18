@@ -94,3 +94,5 @@ The workflow is in `.github/workflows/docker-hub.yml`. Publishing needs two repo
 - `DOCKERHUB_TOKEN` (a Docker Hub access token, not your account password)
 
 Without these secrets the code still works, but no image is published. Set the Docker Hub repository to **Public** if everyone should be able to pull the image without logging in.
+
+After a successful workflow run, the published tags appear under the **Tags** tab on Docker Hub.
