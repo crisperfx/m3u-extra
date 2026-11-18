@@ -1,5 +1,7 @@
 # m3u-extra
 
+[![Docker Hub build](https://github.com/crisperfx/m3u-extra/actions/workflows/docker-hub.yml/badge.svg)](https://github.com/crisperfx/m3u-extra/actions/workflows/docker-hub.yml)
+
 A small web interface for `N_m3u8DL-RE`. Paste a copied download command, start the job and follow the progress and live log in your browser. The Docker image already includes `N_m3u8DL-RE`, `ffmpeg` and `mp4decrypt`, so nothing needs to be installed locally.
 
 ## Quick start
