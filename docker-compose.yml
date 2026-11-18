@@ -1,0 +1,15 @@
+services:
+  ndl-web:
+    image: crisperfx/m3u-extra:latest
+    container_name: ndl-web
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./downloads:/downloads
+    environment:
+      TZ: Europe/Brussels
+      MAX_CONCURRENT: "3"
+      WEB_USER: ${WEB_USER:-}
+      WEB_PASSWORD: ${WEB_PASSWORD:-}
+      EXT_TOKEN: ${EXT_TOKEN:-}
+    restart: unless-stopped

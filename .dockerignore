@@ -1,0 +1,14 @@
+.git/
+.github/
+downloads/
+Downloads/
+Logs/
+*.mkv
+*.mp4
+*.ts
+*.log
+__pycache__/
+*.pyc
+.env
+README.md
+docker-compose.yml

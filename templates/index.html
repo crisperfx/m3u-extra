@@ -1,0 +1,72 @@
+<!doctype html>
+<html lang="nl">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#0b1020">
+  <title>Crisperfx Stream Studio</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+  <div class="glow glow-one"></div>
+  <div class="glow glow-two"></div>
+
+  <header class="topbar">
+    <div class="brand">
+      <div class="logo">▶</div>
+      <div>
+        <h1>Crisperfx <span>Stream Studio</span></h1>
+        <p>N_m3u8DL-RE controller</p>
+      </div>
+    </div>
+    <div id="health" class="chip">verbinding maken...</div>
+  </header>
+
+  <main class="shell">
+    <section class="panel command-panel">
+      <div class="panel-head">
+        <div>
+          <span class="eyebrow">Nieuwe taak</span>
+          <h2>Commando</h2>
+        </div>
+        <button id="clear" class="btn subtle">Geschiedenis wissen</button>
+      </div>
+      <textarea id="command" spellcheck="false" placeholder='N_m3u8DL-RE.exe "https://.../index.mpd" --save-name "Naam" -H "Referer: https://..." --key KID:KEY -M format=mkv'></textarea>
+      <div class="toolbar">
+        <button id="start" class="btn primary">Start download</button>
+        <button id="openLog" class="btn subtle" disabled>Open live log ↗</button>
+        <button id="stop" class="btn danger" disabled>Stop</button>
+      </div>
+      <p id="error" class="error"></p>
+      <details class="hint">
+        <summary>Hoe werkt dit?</summary>
+        <p>Plak het volledige commando. <code>N_m3u8DL-RE.exe</code> wordt automatisch door de Linux-versie vervangen. Bestanden komen in <code>/downloads/&lt;titel&gt;/</code> terecht. Het live logboek opent in een apart tabblad; taken die via de extensie starten verschijnen hier vanzelf.</p>
+      </details>
+    </section>
+
+    <div class="columns">
+      <section class="panel">
+        <div class="panel-head">
+          <div>
+            <span class="eyebrow">Overzicht</span>
+            <h2>Taken</h2>
+          </div>
+        </div>
+        <ul id="jobs" class="list"><li class="empty">Nog geen taken</li></ul>
+      </section>
+      <section class="panel">
+        <div class="panel-head">
+          <div>
+            <span class="eyebrow">Opslag</span>
+            <h2>Bestanden <span id="file-count" class="count"></span></h2>
+          </div>
+          <button id="refreshFiles" class="btn subtle">Vernieuwen</button>
+        </div>
+        <ul id="files" class="list"><li class="empty">Nog geen bestanden</li></ul>
+      </section>
+    </div>
+  </main>
+
+  <script src="{{ url_for('static', filename='app.js') }}"></script>
+</body>
+</html>

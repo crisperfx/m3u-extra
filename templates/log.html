@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="nl">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#0b1020">
+  <title>Log · Crisperfx Stream Studio</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body class="log-page" data-job-id="{{ job_id }}">
+  <div class="glow glow-one"></div>
+  <div class="glow glow-two"></div>
+
+  <header class="topbar">
+    <div class="brand">
+      <div class="logo">▶</div>
+      <div>
+        <h1>Crisperfx <span>Stream Studio</span></h1>
+        <p>Live log</p>
+      </div>
+    </div>
+    <a class="back" href="/">← Terug naar GUI</a>
+  </header>
+
+  <main class="shell">
+    <section class="panel log-panel">
+      <div class="panel-head">
+        <div>
+          <span class="eyebrow">Live log</span>
+          <h2 id="jobTitle">Taak laden...</h2>
+        </div>
+        <div class="head-actions">
+          <span id="log-status" class="chip">inactief</span>
+          <button id="copyLog" class="btn subtle">Kopieer log</button>
+        </div>
+      </div>
+      <div class="status-strip">
+        <span id="phase" class="phase">-</span>
+        <div class="progress"><div id="progressBar"></div></div>
+        <span id="progressText" class="progress-text">—</span>
+      </div>
+      <pre id="log">Log laden...</pre>
+      <div class="toolbar">
+        <label class="switch"><input type="checkbox" id="autoscroll" checked> Log volgen</label>
+      </div>
+      <p id="error" class="error"></p>
+    </section>
+  </main>
+
+  <script src="{{ url_for('static', filename='log.js') }}"></script>
+</body>
+</html>

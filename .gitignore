@@ -1,0 +1,9 @@
+.env
+downloads/
+Logs/
+__pycache__/
+*.pyc
+*.mkv
+*.mp4
+*.ts
+*.log
