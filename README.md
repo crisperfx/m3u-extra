@@ -47,7 +47,7 @@ Copy `.env.example` to `.env` when using Docker Compose. Fill in only what you n
 | `WEB_USER` and `WEB_PASSWORD` | Basic login. Leave both empty to disable login protection. | empty |
 | `EXT_TOKEN` | Secret token for the browser extension. Only needed if you want to start downloads from the extension. | empty |
 
-For the browser extension, set the server URL to `http://<server-or-nas-ip>:8000` and use the same value as `EXT_TOKEN` for the token.
+For the browser extension, set the server URL to the address you use to open the web UI, for example `http://<server-or-nas-ip>:8000` (or `:7890` with the included Dockhand stack). Use the same value as `EXT_TOKEN` for the API token; leave it empty only if `EXT_TOKEN` is empty.
 
 ## Browser extension
 
@@ -58,9 +58,40 @@ The modified extension is included in `extension/`:
 
 The source files are in `extension/src`. The server URL and token are not hardcoded; open the extension options and enter them yourself.
 
+### What to fill in
+
+Open the popup and click **Opties** (or right-click the extension and choose **Options**):
+
+| Field | What to enter |
+| --- | --- |
+| **Server URL** | The URL you use for the web UI, for example `http://192.168.1.10:7890`. Only the scheme, host and port are stored; any path is removed. |
+| **API-token** | The same value as `EXT_TOKEN` in `.env`. Leave empty when `EXT_TOKEN` is empty. |
+| **Test server** | Checks `/api/health`; use this to confirm the URL and the Chrome host permission. |
+| **Knopactie** | `copy_only`, `send_only` or `copy_send` (default). Sending posts to `/api/extension/submit` with the token in the request body. |
+
+Click **Opslaan** after changing anything. Chrome asks for host permission for the server URL; accept it, otherwise sending will fail.
+
+### Stream selection options
+
+These settings build the `--select-video`, `--select-audio` and `--select-subtitle` parts of the command:
+
+- **Video**: a preset dropdown with `none`, `best`, 1080p, 720p, 576p, 432p, 4K and a custom value. The separate **for=best** checkbox appends `:for=best` when no stream matches.
+- **Audio** and **Ondertiteling**: choose `none`, `for=all`, **Talen** (languages) or **Aangepast** (custom).
+- In **Talen**, check Dutch (`nl|nld`) and/or English (`en|eng`) and add extra codes such as `fr|fre` in the extra field. Multiple languages are combined into `lang=nl|nld|en|eng`.
+- The separate **for=best** checkbox appends `:for=best` for language or custom selections. It is disabled for `none` and `for=all`.
+- Defaults: video `res=^1280x:for=best`, audio `for=all`, subtitles `for=all`.
+
+### Extra compared with the stock extension
+
+- Server URL and token are configurable and are never hardcoded.
+- The key button can copy, send or do both; its label changes to `copy`, `send` or `copy+send`.
+- Stream selectors and `for=best` are exposed in the options page instead of being fixed in the generated command.
+- Manifest headers stay intact, including the full `index.mpd?...` URL, and VTMGO `Origin`, `Referer` and `User-Agent` headers are attached to the matching manifest.
+- Manifests without keys produce an empty `keys: []` entry, so no-key streams still generate a usable command.
+
 ## Updates
 
-Every push to `main` builds a new image and publishes it to Docker Hub. The latest build is available as `crisperfx/m3u-extra:latest`; each commit also gets a `sha-<commit>` tag. Tags such as `v1.0.0` are published with the same tag on Docker Hub.
+Every push to `main` that changes files other than `README.md` builds a new image and publishes it to Docker Hub. The latest build is available as `crisperfx/m3u-extra:latest`; each commit also gets a `sha-<commit>` tag. Tags such as `v1.0.0` are published with the same tag on Docker Hub.
 
 To update:
 
@@ -96,3 +127,5 @@ The workflow is in `.github/workflows/docker-hub.yml`. Publishing needs two repo
 Without these secrets the code still works, but no image is published. Set the Docker Hub repository to **Public** if everyone should be able to pull the image without logging in.
 
 After a successful workflow run, the published tags appear under the **Tags** tab on Docker Hub.
+
+README-only changes do not trigger an image build. To force a rebuild after such a change, use **Actions → Build en push Docker image → Run workflow** or change a file outside `README.md`.
