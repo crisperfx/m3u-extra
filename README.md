@@ -31,7 +31,7 @@ Files are stored in the folder you mount at `/downloads`.
 
 1. Paste the full `N_m3u8DL-RE` command into the text field.
 2. Click **Start download**.
-3. The homepage keeps the selected streams listed under each task and shows progress for the active stream only. A completed stream stays at 100% until the next stream starts. Use **Log ↗** on a task to open the detailed live log when you want it.
+3. The homepage keeps the selected streams listed under each task and shows progress for the active stream only. A completed stream stays at 100% until the next stream starts. Overall progress is averaged over all selected streams and never moves backwards. Use **Log ↗** on a task to open the detailed live log when you want it.
 4. The log page shows the selected streams and compact progress per stream. Per-segment and stream status lines (merging, decrypting, processing completed, finalizing) are filtered out to keep memory use low.
 5. Under **Files** you can find, download or delete finished `.mkv` files.
 

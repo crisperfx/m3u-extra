@@ -123,16 +123,34 @@ class ProgressTests(unittest.TestCase):
         )
         self.assertEqual(output, "")
 
-    def test_job_progress_is_weighted_across_streams(self):
+    def test_job_progress_is_based_on_all_selected_streams(self):
         job = app_module.Job("x", ["N_m3u8DL-RE"])
         job.observe(SAMPLE_LOG)
         job.observe(PROGRESS_LOG)
         info = job.info()
-        self.assertEqual(info["progress"], 7)
+        self.assertEqual(info["progress"], 2)
         self.assertEqual(len(info["progress_streams"]["video"]), 1)
         self.assertEqual(len(info["progress_streams"]["audio"]), 2)
         self.assertEqual(len(info["progress_streams"]["subtitle"]), 1)
         self.assertIn("10.82%", info["progress_streams"]["video"][0]["text"])
+
+    def test_repeated_selected_streams_block_does_not_reset_progress(self):
+        job = app_module.Job("x", ["N_m3u8DL-RE"])
+        job.observe(SAMPLE_LOG)
+        job.observe(PROGRESS_LOG)
+        self.assertEqual(job.info()["progress"], 2)
+        job.observe(SAMPLE_LOG)
+        self.assertEqual(job.info()["progress"], 2)
+
+    def test_overall_progress_does_not_drop_when_next_stream_starts(self):
+        job = app_module.Job("x", ["N_m3u8DL-RE"])
+        job.observe(SAMPLE_LOG)
+        job.observe("Vid 1920x1080 | 5644 Kbps | 2 | 25 --- 100/100 100.00% done\n")
+        self.assertEqual(job.info()["progress"], 25)
+        job.observe("Aud 640 Kbps | Surround | eng | F801CH --- 0/100 0.00%\n")
+        self.assertEqual(job.info()["progress"], 25)
+        job.observe("Aud 640 Kbps | Surround | eng | F801CH --- 50/100 50.00%\n")
+        self.assertEqual(job.info()["progress"], 37)
 
     def test_merging_lines_are_ignored(self):
         self.assertIsNone(app_module.parse_progress_line(MERGING_LOG.splitlines()[1]))

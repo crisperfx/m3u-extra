@@ -358,7 +358,24 @@ def progress_key(item):
     return (item.get("kind"), re.sub(r"\s+", " ", label).lower())
 
 
-def aggregate_stream_progress(progress_streams):
+def stream_progress_percent(item):
+    if not item or not item.get("total"):
+        return 0.0
+    return min(100.0, max(0.0, item.get("current", 0) * 100 / item["total"]))
+
+
+def aggregate_stream_progress(progress_streams, selected_streams=None):
+    if selected_streams:
+        slots = []
+        for kind in ("video", "audio", "subtitle"):
+            selected = selected_streams.get(kind) or []
+            entries = progress_streams.get(kind) or []
+            for index in range(len(selected)):
+                slots.append(
+                    stream_progress_percent(entries[index] if index < len(entries) else None)
+                )
+        if slots:
+            return int(sum(slots) / len(slots))
     entries = []
     for items in progress_streams.values():
         entries.extend(item for item in items if item.get("total"))
@@ -663,6 +680,7 @@ class Job:
         self.status = "running"
         self.phase = "initialiseren"
         self.progress = None
+        self.aggregate_ready = False
         self.detail = ""
         self.returncode = None
         self.proc = None
@@ -712,11 +730,17 @@ class Job:
         changed = False
         raw_stream = stream_chunk if stream_chunk is not None else line
         raw_lines = re.split(r"[\r\n]+", ANSI_PATTERN.sub("", raw_stream))
-        if any(SELECTED_STREAMS_PATTERN.search(clean_log_line(part)) for part in raw_lines):
+        selected_seen = any(
+            SELECTED_STREAMS_PATTERN.search(clean_log_line(part)) for part in raw_lines
+        )
+        streams_before = self.streams.info()
+        streams_changed = self.streams.feed(raw_stream)
+        if streams_changed:
+            changed = True
+        if selected_seen and self.streams.info() != streams_before:
             self.progress_streams = {"video": [], "audio": [], "subtitle": []}
             self.active_stream = None
-            changed = True
-        if self.streams.feed(raw_stream):
+            self.aggregate_ready = False
             changed = True
         progress_updates = []
         for segment in raw_lines:
@@ -724,8 +748,9 @@ class Job:
             if update:
                 changed = True
                 progress_updates.append(update)
+        detected_progress = None
         for segment in split_output(line):
-            if parse_progress_line(segment):
+            if parse_progress_line(segment) or STREAM_STATUS_BAR_PATTERN.match(segment):
                 continue
             phase = detect_phase(segment)
             if phase and self.phase != phase:
@@ -733,16 +758,28 @@ class Job:
                     self.phase = phase
                     changed = True
             value = detect_progress(segment)
-            if value is not None and value != self.progress:
-                self.progress = value
-                changed = True
+            if value is not None:
+                detected_progress = value
             detail = segment[-200:]
             if detail and detail != self.detail:
                 self.detail = detail
                 changed = True
-        aggregate = aggregate_stream_progress(self.progress_streams)
-        if aggregate is not None and aggregate != self.progress:
-            self.progress = aggregate
+        aggregate = aggregate_stream_progress(
+            self.progress_streams, self.streams.info()
+        )
+        had_aggregate = self.aggregate_ready
+        self.aggregate_ready = aggregate is not None
+        if aggregate is not None:
+            if had_aggregate and self.progress is not None:
+                next_progress = max(self.progress, aggregate)
+            else:
+                next_progress = aggregate
+        elif detected_progress is not None and not had_aggregate:
+            next_progress = detected_progress
+        else:
+            next_progress = None
+        if next_progress is not None and next_progress != self.progress:
+            self.progress = next_progress
             changed = True
         advancing = [
             (item, delta)
