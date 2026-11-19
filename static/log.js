@@ -6,6 +6,7 @@ const progressBar = document.getElementById('progressBar');
 const progressText = document.getElementById('progressText');
 const jobTitle = document.getElementById('jobTitle');
 const streamsEl = document.getElementById('jobStreams');
+const progressEl = document.getElementById('jobProgress');
 const autoscrollEl = document.getElementById('autoscroll');
 const errorEl = document.getElementById('error');
 const copyLog = document.getElementById('copyLog');
@@ -60,6 +61,9 @@ function updateStatus(job) {
   streamsEl.replaceChildren();
   const streamBlock = window.renderSelectedStreams ? window.renderSelectedStreams(job) : null;
   if (streamBlock) streamsEl.append(streamBlock);
+  progressEl.replaceChildren();
+  const progressBlock = window.renderStreamProgress ? window.renderStreamProgress(job) : null;
+  if (progressBlock) progressEl.append(progressBlock);
   phaseEl.textContent = phaseLabel(job);
   logStatus.textContent = phaseLabel(job);
   logStatus.className = `chip ${statusClass(job)}`;

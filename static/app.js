@@ -132,6 +132,8 @@ function renderJobs(jobs) {
     li.append(top, meta);
     const streamBlock = window.renderSelectedStreams ? window.renderSelectedStreams(job) : null;
     if (streamBlock) li.append(streamBlock);
+    const progressBlock = window.renderStreamProgress ? window.renderStreamProgress(job) : null;
+    if (progressBlock) li.append(progressBlock);
     jobsEl.append(li);
   }
 }

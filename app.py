@@ -108,6 +108,10 @@ TIMESTAMP_LINE_PATTERN = re.compile(r"^\s*\d{2}:\d{2}:\d{2}\.\d{3}\s+")
 STREAM_KIND_MAP = {"vid": "video", "aud": "audio", "sub": "subtitle", "text": "subtitle"}
 STREAM_LABELS = {"video": "Video", "audio": "Audio", "subtitle": "Ondertiteling"}
 STREAM_IGNORE_PATTERN = re.compile(r"segments|~\s*\d|\d+\s*%", re.I)
+PROGRESS_LINE_PATTERN = re.compile(
+    r"^(Vid|Aud|Sub|Text)\s+(.+?)\s*(?:-{3,}\s*)?(\d+)\s*/\s*(\d+)\s+(\d+(?:\.\d+)?)\s*%\s*(.*)$",
+    re.I,
+)
 DASH_AD_PERIOD_REGEX = (
     r"(mid-roll|mid_roll|midroll|pre-roll|pre_roll|preroll|"
     r"post-roll|post_roll|postroll|ad-pod|ad_pod|adpod|ad-break|ad_break|adbreak|"
@@ -280,6 +284,56 @@ def parse_stream_line(raw):
         "details": " · ".join(details),
         "raw": line,
     }
+
+
+def parse_progress_line(raw):
+    line = clean_log_line(raw)
+    match = PROGRESS_LINE_PATTERN.match(line)
+    if not match:
+        return None
+    kind = STREAM_KIND_MAP[match.group(1).lower()]
+    return {
+        "kind": kind,
+        "label": match.group(2).strip(),
+        "current": int(match.group(3)),
+        "total": int(match.group(4)),
+        "percent": float(match.group(5)),
+        "tail": match.group(6).strip(),
+        "text": line,
+    }
+
+
+def aggregate_stream_progress(progress_streams):
+    entries = []
+    for items in progress_streams.values():
+        entries.extend(item for item in items if item.get("total"))
+    total = sum(item["total"] for item in entries)
+    if not total:
+        return None
+    current = sum(min(item["current"], item["total"]) for item in entries)
+    return min(100, max(0, int(current * 100 / total)))
+
+
+class LogFilter:
+    def __init__(self):
+        self.residue = ""
+
+    def feed(self, text):
+        if not text:
+            return ""
+        data = self.residue + ANSI_PATTERN.sub("", text).replace("\r\n", "\n").replace("\r", "\n")
+        self.residue = ""
+        if not data.endswith("\n"):
+            head, _, self.residue = data.rpartition("\n")
+            lines = head.split("\n") if head else []
+        else:
+            lines = data.split("\n")[:-1]
+        kept = []
+        for line in lines:
+            if not line.strip() or parse_progress_line(line):
+                continue
+            kept.append(line)
+        return "".join(line + "\n" for line in kept)
 
 
 class StreamCollector:
@@ -473,17 +527,15 @@ def inject_dash_ad_filters(tokens):
     drop_parts = detect_vod_drop_parts(result)
     if drop_parts:
         result += ["--vod-drop-parts", drop_parts]
+    result += ["--ad-keyword", DASH_AD_URL_KEYWORD]
     selector = f"period={DASH_AD_PERIOD_REGEX}:for=all"
-    return result + [
-        "-dv",
-        selector,
-        "-da",
-        selector,
-        "-ds",
-        selector,
-        "--ad-keyword",
-        DASH_AD_URL_KEYWORD,
-    ]
+    if not has_option(result, {"-sv", "--select-video"}):
+        result += ["-dv", selector]
+    if not has_option(result, {"-sa", "--select-audio"}):
+        result += ["-da", selector]
+    if not has_option(result, {"-ss", "--select-subtitle"}):
+        result += ["-ds", selector]
+    return result
 
 
 def parse_command(raw):
@@ -549,6 +601,8 @@ class Job:
         self.argv = argv
         self.output = queue.Queue()
         self.streams = StreamCollector()
+        self.progress_streams = {"video": [], "audio": [], "subtitle": []}
+        self.log_filter = LogFilter()
         self.status = "running"
         self.phase = "initialiseren"
         self.progress = None
@@ -569,17 +623,39 @@ class Job:
             "progress": self.progress,
             "detail": self.detail,
             "streams": self.streams.info(),
+            "progress_streams": {
+                kind: [dict(item) for item in items]
+                for kind, items in self.progress_streams.items()
+            },
             "returncode": self.returncode,
             "created": self.created,
             "started": self.started,
             "finished": self.finished,
         }
 
+    def observe_progress(self, raw):
+        parsed = parse_progress_line(raw)
+        if not parsed:
+            return False
+        items = self.progress_streams[parsed["kind"]]
+        existing = next((item for item in items if item["label"] == parsed["label"]), None)
+        if existing:
+            existing.update(parsed)
+        else:
+            items.append(parsed)
+        return True
+
     def observe(self, line, stream_chunk=None):
         changed = False
-        if self.streams.feed(stream_chunk if stream_chunk is not None else line):
+        raw_stream = stream_chunk if stream_chunk is not None else line
+        if self.streams.feed(raw_stream):
             changed = True
+        for segment in re.split(r"[\r\n]+", ANSI_PATTERN.sub("", raw_stream)):
+            if self.observe_progress(segment):
+                changed = True
         for segment in split_output(line):
+            if parse_progress_line(segment):
+                continue
             phase = detect_phase(segment)
             if phase and self.phase != phase:
                 if self.phase not in TERMINAL_PHASES or phase in TERMINAL_PHASES:
@@ -593,6 +669,10 @@ class Job:
             if detail and detail != self.detail:
                 self.detail = detail
                 changed = True
+        aggregate = aggregate_stream_progress(self.progress_streams)
+        if aggregate is not None and aggregate != self.progress:
+            self.progress = aggregate
+            changed = True
         if changed:
             self.output.put(("status", self.info()))
 
@@ -634,12 +714,16 @@ class Job:
                     text = data.decode("utf-8", errors="replace")
                     combined = carry + text
                     self.observe(combined, text)
-                    self.output.put(("log", text))
+                    filtered = self.log_filter.feed(text)
+                    if filtered:
+                        self.output.put(("log", filtered))
                     carry = combined[-200:]
             elif self.proc.stdout is not None:
                 for line in self.proc.stdout:
                     self.observe(line, line)
-                    self.output.put(("log", line))
+                    filtered = self.log_filter.feed(line)
+                    if filtered:
+                        self.output.put(("log", filtered))
             self.returncode = self.proc.wait()
             with _jobs_lock:
                 if self.status != "cancelled":

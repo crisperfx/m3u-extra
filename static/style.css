@@ -185,6 +185,11 @@ pre {
 .stream-row.audio .stream-main { color: #7ce0c2; }
 .stream-row.subtitle .stream-main { color: var(--warn); }
 .stream-extra { color: var(--muted); opacity: .85; }
+.progress-line { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.stream-pct {
+  color: var(--accent-2); font-weight: 700; font-variant-numeric: tabular-nums;
+  padding: 1px 7px; border-radius: 999px; background: rgba(52, 211, 181, .12);
+}
 
 .file-row { display: flex; align-items: center; gap: 10px; }
 .file-row a.name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text); text-decoration: none; }
@@ -195,6 +200,7 @@ body.log-page { display: flex; flex-direction: column; min-height: 100vh; }
 .log-page .shell { width: 100%; max-width: none; flex: 1; }
 .log-page pre { min-height: calc(100vh - 320px); max-height: none; }
 .log-page .status-strip { margin-bottom: 14px; }
+.log-page .progress-line { white-space: normal; overflow: visible; text-overflow: clip; }
 .log-page .back { color: var(--accent-2); text-decoration: none; font-size: 12px; }
 
 @media (max-width: 720px) {

@@ -57,5 +57,43 @@
     return wrap;
   }
 
+  function progressText(item) {
+    if (item.text) return item.text;
+    const parts = [item.label, `${item.current}/${item.total}`, `${item.percent}%`, item.tail];
+    return parts.filter(Boolean).join(' ');
+  }
+
+  function buildProgress(job) {
+    const streams = job && job.progress_streams;
+    if (!streams) return null;
+    const rows = [];
+    GROUPS.forEach(([key]) => {
+      (streams[key] || []).forEach((item) => rows.push(item));
+    });
+    if (!rows.length) return null;
+
+    const wrap = document.createElement('div');
+    wrap.className = 'streams progress-streams';
+    const heading = document.createElement('div');
+    heading.className = 'streams-head';
+    heading.textContent = 'Voortgang per stream';
+    wrap.append(heading);
+
+    rows.forEach((item) => {
+      const row = document.createElement('div');
+      row.className = `stream-row ${item.kind}`;
+      const text = document.createElement('span');
+      text.className = 'progress-line';
+      text.textContent = progressText(item);
+      const pct = document.createElement('span');
+      pct.className = 'stream-pct';
+      pct.textContent = `${item.percent}%`;
+      row.append(text, pct);
+      wrap.append(row);
+    });
+    return wrap;
+  }
+
   window.renderSelectedStreams = build;
+  window.renderStreamProgress = buildProgress;
 })();

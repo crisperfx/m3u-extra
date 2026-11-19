@@ -31,8 +31,8 @@ Files are stored in the folder you mount at `/downloads`.
 
 1. Paste the full `N_m3u8DL-RE` command into the text field.
 2. Click **Start download**.
-3. The live log opens in a separate tab, with the current phase and progress percentage.
-4. The selected video resolution, audio tracks with language and subtitle tracks with language appear directly under each task.
+3. The live log opens in a separate tab, with the current phase, overall progress and compact progress per stream instead of one line per segment.
+4. The selected video resolution, audio tracks with language and subtitle tracks with language appear directly under each task, together with their progress badges.
 5. Under **Files** you can find, download or delete finished `.mkv` files.
 
 Active jobs live in the container memory. Files remain on disk as long as the `/downloads` mount is correct.
