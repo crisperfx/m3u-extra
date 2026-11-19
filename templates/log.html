@@ -39,6 +39,7 @@
         <div class="progress"><div id="progressBar"></div></div>
         <span id="progressText" class="progress-text">—</span>
       </div>
+      <div id="jobStreams" class="streams-slot"></div>
       <pre id="log">Log laden...</pre>
       <div class="toolbar">
         <label class="switch"><input type="checkbox" id="autoscroll" checked> Log volgen</label>
@@ -47,6 +48,7 @@
     </section>
   </main>
 
+  <script src="{{ url_for('static', filename='streams.js') }}"></script>
   <script src="{{ url_for('static', filename='log.js') }}"></script>
 </body>
 </html>

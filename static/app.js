@@ -130,6 +130,8 @@ function renderJobs(jobs) {
     }
     meta.append(actions);
     li.append(top, meta);
+    const streamBlock = window.renderSelectedStreams ? window.renderSelectedStreams(job) : null;
+    if (streamBlock) li.append(streamBlock);
     jobsEl.append(li);
   }
 }

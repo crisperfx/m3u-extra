@@ -46,6 +46,68 @@ PROGRESS_PATTERN = re.compile(r"(?<![\d.])(\d{1,3}(?:\.\d+)?)\s*%")
 ANSI_PATTERN = re.compile(r"\x1b\[[0-9;?]*[ -/]*[@-~]")
 TIMESTAMP_PATTERN = re.compile(r"(?=\d{2}:\d{2}:\d{2}\.\d{3}\s)")
 HIDDEN_DIRS = {"@eaDir", "#recycle", "#snapshot", "@tmp", "$RECYCLE.BIN"}
+LANGUAGE_LABELS = {
+    "nederlands": "Nederlands",
+    "nld": "Nederlands",
+    "dut": "Nederlands",
+    "nl": "Nederlands",
+    "english": "Engels",
+    "eng": "Engels",
+    "en": "Engels",
+    "frans": "Frans",
+    "fra": "Frans",
+    "fre": "Frans",
+    "fr": "Frans",
+    "duits": "Duits",
+    "deu": "Duits",
+    "ger": "Duits",
+    "de": "Duits",
+    "spaans": "Spaans",
+    "spa": "Spaans",
+    "es": "Spaans",
+    "italiaans": "Italiaans",
+    "ita": "Italiaans",
+    "it": "Italiaans",
+    "portugees": "Portugees",
+    "por": "Portugees",
+    "pt": "Portugees",
+    "japans": "Japans",
+    "jpn": "Japans",
+    "ja": "Japans",
+    "koreaans": "Koreaans",
+    "kor": "Koreaans",
+    "ko": "Koreaans",
+    "chinees": "Chinees",
+    "zho": "Chinees",
+    "chi": "Chinees",
+    "zh": "Chinees",
+    "russisch": "Russisch",
+    "rus": "Russisch",
+    "ru": "Russisch",
+    "arabisch": "Arabisch",
+    "ara": "Arabisch",
+    "ar": "Arabisch",
+    "hindi": "Hindi",
+    "hin": "Hindi",
+    "hi": "Hindi",
+}
+def build_language_pattern(mapping):
+    alternatives = "|".join(sorted((re.escape(code) for code in mapping), key=len, reverse=True))
+    return re.compile(r"(?<!\w)(" + alternatives + r")(?!\w)", re.I)
+
+
+LANGUAGE_CODE_LABELS = {code: label for code, label in LANGUAGE_LABELS.items() if len(code) <= 3}
+LANGUAGE_NAME_LABELS = {code: label for code, label in LANGUAGE_LABELS.items() if len(code) > 3}
+LANGUAGE_CODE_PATTERN = build_language_pattern(LANGUAGE_CODE_LABELS)
+LANGUAGE_NAME_PATTERN = build_language_pattern(LANGUAGE_NAME_LABELS)
+RESOLUTION_PATTERN = re.compile(r"(?<!\w)(\d{3,4}[xX]\d{3,4})(?!\w)")
+STREAM_LINE_PATTERN = re.compile(r"^(Vid|Aud|Sub|Text)\b", re.I)
+SELECTED_STREAMS_PATTERN = re.compile(r"selected streams\s*:", re.I)
+LOG_LEVEL_PATTERN = re.compile(r"^\s*(?:INFO|WARN|WARNING|ERROR|DEBUG|TRACE)\s*:\s*", re.I)
+TIMESTAMP_LINE_PATTERN = re.compile(r"^\s*\d{2}:\d{2}:\d{2}\.\d{3}\s+")
+STREAM_KIND_MAP = {"vid": "video", "aud": "audio", "sub": "subtitle", "text": "subtitle"}
+STREAM_LABELS = {"video": "Video", "audio": "Audio", "subtitle": "Ondertiteling"}
+STREAM_IGNORE_PATTERN = re.compile(r"segments|~\s*\d|\d+\s*%", re.I)
 DASH_AD_PERIOD_REGEX = (
     r"(mid-roll|mid_roll|midroll|pre-roll|pre_roll|preroll|"
     r"post-roll|post_roll|postroll|ad-pod|ad_pod|adpod|ad-break|ad_break|adbreak|"
@@ -167,6 +229,112 @@ def split_output(text):
 def last_log_detail(text):
     segments = split_output(text)
     return segments[-1][-200:] if segments else ""
+
+
+def clean_log_line(raw):
+    text = ANSI_PATTERN.sub("", raw)
+    text = TIMESTAMP_LINE_PATTERN.sub("", text)
+    text = LOG_LEVEL_PATTERN.sub("", text)
+    return text.strip()
+
+
+def stream_language(text):
+    match = LANGUAGE_CODE_PATTERN.search(text) or LANGUAGE_NAME_PATTERN.search(text)
+    if not match:
+        return None, None
+    code = match.group(1).lower()
+    return code, LANGUAGE_LABELS[code]
+
+
+def parse_stream_line(raw):
+    line = clean_log_line(raw)
+    match = STREAM_LINE_PATTERN.match(line)
+    if not match:
+        return None
+    kind = STREAM_KIND_MAP[match.group(1).lower()]
+    parts = [part.strip() for part in line.split("|") if part.strip()]
+    main = parts[0]
+    rest = main[match.end() :].strip()
+    code, language = stream_language(line)
+    resolution_match = RESOLUTION_PATTERN.search(line)
+    resolution = resolution_match.group(1) if resolution_match else None
+    track_match = re.search(r"\b(\d+)\b", rest)
+    details = []
+    for part in parts[1:]:
+        if STREAM_IGNORE_PATTERN.search(part):
+            continue
+        if code and part.lower() == code:
+            continue
+        if language and part.lower() == language.lower():
+            continue
+        details.append(part)
+    name = resolution or language or rest or STREAM_LABELS[kind]
+    return {
+        "kind": kind,
+        "label": STREAM_LABELS[kind],
+        "name": name,
+        "resolution": resolution,
+        "language": language,
+        "language_code": code,
+        "track": track_match.group(1) if track_match else None,
+        "details": " · ".join(details),
+        "raw": line,
+    }
+
+
+class StreamCollector:
+    def __init__(self):
+        self.video = []
+        self.audio = []
+        self.subtitle = []
+        self.collecting = False
+        self.residue = ""
+
+    def buckets(self):
+        return {"video": self.video, "audio": self.audio, "subtitle": self.subtitle}
+
+    def feed(self, text):
+        if not text:
+            return False
+        data = self.residue + ANSI_PATTERN.sub("", text).replace("\r\n", "\n").replace("\r", "\n")
+        self.residue = ""
+        if not data.endswith("\n"):
+            head, _, self.residue = data.rpartition("\n")
+            lines = head.split("\n") if head else []
+        else:
+            lines = data.split("\n")[:-1]
+        changed = False
+        for raw in lines:
+            changed = self.consume(raw) or changed
+        return changed
+
+    def consume(self, raw):
+        line = clean_log_line(raw)
+        if not line:
+            return False
+        if SELECTED_STREAMS_PATTERN.search(line):
+            self.video = []
+            self.audio = []
+            self.subtitle = []
+            self.collecting = True
+            return True
+        if not self.collecting:
+            return False
+        parsed = parse_stream_line(line)
+        if parsed:
+            bucket = self.buckets()[parsed["kind"]]
+            if parsed not in bucket:
+                bucket.append(parsed)
+            return True
+        self.collecting = False
+        return False
+
+    def info(self):
+        return {
+            "video": list(self.video),
+            "audio": list(self.audio),
+            "subtitle": list(self.subtitle),
+        }
 
 
 def has_option(tokens, names):
@@ -380,6 +548,7 @@ class Job:
         self.title = extract_title(argv)
         self.argv = argv
         self.output = queue.Queue()
+        self.streams = StreamCollector()
         self.status = "running"
         self.phase = "initialiseren"
         self.progress = None
@@ -399,14 +568,17 @@ class Job:
             "phase": self.phase,
             "progress": self.progress,
             "detail": self.detail,
+            "streams": self.streams.info(),
             "returncode": self.returncode,
             "created": self.created,
             "started": self.started,
             "finished": self.finished,
         }
 
-    def observe(self, line):
+    def observe(self, line, stream_chunk=None):
         changed = False
+        if self.streams.feed(stream_chunk if stream_chunk is not None else line):
+            changed = True
         for segment in split_output(line):
             phase = detect_phase(segment)
             if phase and self.phase != phase:
@@ -461,12 +633,12 @@ class Job:
                         break
                     text = data.decode("utf-8", errors="replace")
                     combined = carry + text
-                    self.observe(combined)
+                    self.observe(combined, text)
                     self.output.put(("log", text))
                     carry = combined[-200:]
             elif self.proc.stdout is not None:
                 for line in self.proc.stdout:
-                    self.observe(line)
+                    self.observe(line, line)
                     self.output.put(("log", line))
             self.returncode = self.proc.wait()
             with _jobs_lock:
