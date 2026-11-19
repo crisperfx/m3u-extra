@@ -2,9 +2,9 @@
 
 [![Docker Hub build](https://github.com/crisperfx/m3u-extra/actions/workflows/docker-hub.yml/badge.svg)](https://github.com/crisperfx/m3u-extra/actions/workflows/docker-hub.yml)
 
-<img width="377" height="476" alt="image" src="https://github.com/user-attachments/assets/48848608-4af6-465e-b2a6-09f3a81cbbc3" />
-<img width="374" height="459" alt="image" src="https://github.com/user-attachments/assets/0f6164ab-7466-4814-a904-b1c7e218453c" />
-<img width="376" height="470" alt="image" src="https://github.com/user-attachments/assets/74c969ed-b97f-4304-b444-9c66729ca292" />
+| Manual command | Per-stream detail | Single-page log |
+| --- | --- | --- |
+| <img width="260" alt="Manual command entry" src="https://github.com/user-attachments/assets/48848608-4af6-465e-b2a6-09f3a81cbbc3" /><br><sub>Paste and run a full <code>N_m3u8DL-RE</code> command directly from the interface.</sub> | <img width="260" alt="Detailed progress per stream" src="https://github.com/user-attachments/assets/0f6164ab-7466-4814-a904-b1c7e218453c" /><br><sub>See the selected streams and progress for each job at a glance.</sub> | <img width="260" alt="Log and job details on one page" src="https://github.com/user-attachments/assets/74c969ed-b97f-4304-b444-9c66729ca292" /><br><sub>Follow the live log and job details together on one page.</sub> |
 
 A small web interface for `N_m3u8DL-RE`. Paste a copied download command, start the job and follow the progress and live log in your browser. The Docker image already includes `N_m3u8DL-RE`, `ffmpeg` and `mp4decrypt`, so nothing needs to be installed locally.
 
