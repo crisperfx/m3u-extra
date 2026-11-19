@@ -39,6 +39,14 @@ DECRYPTING_LOG = (
     "Vid 1280x720 | 4003 Kbps | 25 Decrypting ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━           - - - 00:00:00\n"
 )
 
+PROCESSING_LOG = (
+    "Vid 1280x720 | 4003 Kbps | 25 Processing completed ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━     100.00% 1.11GB - 00:00:00\n"
+    "Vid 1280x720 | 4003 Kbps | 25 Processing completed          ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━        100.00%          1.11GB    -    00:00:00\n"
+    "Aud 640 Kbps | Surround | eng | F801CH Finalizing  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━           -      - - 00:00:00\n"
+    "23:28:47.289 INFO : Aud 640 Kbps | Surround | eng | F801CH Processing completed\n"
+    "23:28:47.331 WARN : Type: cenc\n"
+)
+
 
 class StreamParsingTests(unittest.TestCase):
     def test_parse_video_line(self):
@@ -142,6 +150,13 @@ class ProgressTests(unittest.TestCase):
         self.assertIn("Decrypting using MP4DECRYPT", output)
         self.assertNotIn("Decrypting ━", output)
 
+    def test_processing_completed_status_lines_are_ignored(self):
+        log_filter = app_module.LogFilter()
+        output = log_filter.feed(PROCESSING_LOG)
+        self.assertNotIn("Processing completed", output)
+        self.assertNotIn("Finalizing", output)
+        self.assertIn("Type: cenc", output)
+
     def test_duplicate_progress_rows_are_merged(self):
         job = app_module.Job("x", ["N_m3u8DL-RE"])
         job.observe("Vid 1920x1080 | en | h264 --- 108/1000 10.82% 1.23MB/s\n")
@@ -156,7 +171,7 @@ class ProgressTests(unittest.TestCase):
         job.observe("Vid 1920x1080 | en | h264 --- 999/1000 99.90% 1.23MB/s\n")
         info = job.info()
         self.assertEqual(info["progress_streams"]["video"][0]["percent"], 100.0)
-        self.assertIsNone(info["active_stream"])
+        self.assertEqual(info["active_stream"]["percent"], 100.0)
 
     def test_selected_streams_block_resets_progress(self):
         job = app_module.Job("x", ["N_m3u8DL-RE"])
@@ -184,6 +199,20 @@ class ProgressTests(unittest.TestCase):
         self.assertEqual(active["kind"], "video")
         self.assertEqual(active["current"], 5)
 
+    def test_completed_stream_stays_visible_until_next_stream_advances(self):
+        job = app_module.Job("x", ["N_m3u8DL-RE"])
+        job.observe("Vid 1920x1080 | en | h264 --- 10/10 100.00%\n")
+        active = job.info()["active_stream"]
+        self.assertEqual(active["kind"], "video")
+        self.assertEqual(active["percent"], 100.0)
+        job.observe("Aud 192 Kbps | Stereo | eng --- 0/100 0.00%\n")
+        active = job.info()["active_stream"]
+        self.assertEqual(active["kind"], "video")
+        job.observe("Aud 192 Kbps | Stereo | eng --- 5/100 5.00%\n")
+        active = job.info()["active_stream"]
+        self.assertEqual(active["kind"], "audio")
+        self.assertEqual(active["current"], 5)
+
     def test_finish_phase_marks_all_streams_complete(self):
         job = app_module.Job("x", ["N_m3u8DL-RE"])
         job.observe("Vid 1920x1080 | en | h264 --- 108/1000 10.82% 1.23MB/s\n")
@@ -194,7 +223,7 @@ class ProgressTests(unittest.TestCase):
         self.assertEqual(stream["current"], stream["total"])
         self.assertEqual(stream["percent"], 100.0)
         self.assertEqual(info["progress"], 100)
-        self.assertIsNone(info["active_stream"])
+        self.assertEqual(info["active_stream"]["percent"], 100.0)
 
 
 class ArchiveTests(unittest.TestCase):

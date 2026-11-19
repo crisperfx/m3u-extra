@@ -130,6 +130,8 @@ function renderJobs(jobs) {
     }
     meta.append(actions);
     li.append(top, meta);
+    const streamBlock = window.renderSelectedStreams ? window.renderSelectedStreams(job) : null;
+    if (streamBlock) li.append(streamBlock);
     const activeBlock = window.renderActiveStream ? window.renderActiveStream(job) : null;
     if (activeBlock) li.append(activeBlock);
     jobsEl.append(li);

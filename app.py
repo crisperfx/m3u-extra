@@ -149,7 +149,9 @@ PROGRESS_LINE_PATTERN = re.compile(
     re.I,
 )
 STREAM_STATUS_BAR_PATTERN = re.compile(
-    r"^(Vid|Aud|Sub|Text)\b.*\b(?:Downloading|Decrypting|Merging|Extracting|Muxing)\b.*[━─—]{3,}",
+    r"^(?:\d{2}:\d{2}:\d{2}\.\d{3}\s+\w+\s*:\s*)?"
+    r"(Vid|Aud|Sub|Text)\b.*"
+    r"\b(?:Downloading|Decrypting|Merging|Extracting|Muxing|Finalizing|Processing completed)\b",
     re.I,
 )
 DASH_AD_PERIOD_REGEX = (
@@ -328,8 +330,6 @@ def parse_stream_line(raw):
 
 def parse_progress_line(raw):
     line = clean_log_line(raw)
-    if STREAM_STATUS_BAR_PATTERN.match(line):
-        return None
     match = PROGRESS_LINE_PATTERN.match(line)
     if not match:
         return None
@@ -751,14 +751,9 @@ class Job:
         ]
         if advancing:
             self.active_stream = max(advancing, key=lambda pair: pair[1])[0]
-        elif self.active_stream is None or self.active_stream.get("percent", 100) >= 100:
+        elif self.active_stream is None:
             self.active_stream = next(
-                (
-                    item
-                    for items in self.progress_streams.values()
-                    for item in items
-                    if item.get("current", 0) > 0 and item.get("percent", 100) < 100
-                ),
+                (item for items in self.progress_streams.values() for item in items),
                 None,
             )
         if changed:
@@ -772,7 +767,6 @@ class Job:
                 for item in items:
                     item["current"] = item.get("total", item.get("current", 0))
                     item["percent"] = 100.0
-            self.active_stream = None
         elif self.status == "failed":
             self.phase = "gefaald"
         elif self.status == "cancelled":
