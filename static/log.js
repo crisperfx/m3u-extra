@@ -144,7 +144,7 @@ function updateTopButton() {
 }
 
 window.addEventListener('scroll', updateTopButton, { passive: true });
-topBtn.onclick = () => window.scrollTo({ top: 0, behavior: 'smooth' });
+topBtn.onclick = () => window.scrollTo(0, 0);
 updateTopButton();
 
 window.addEventListener('languagechange', () => {
