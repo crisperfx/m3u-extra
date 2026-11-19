@@ -123,3 +123,7 @@ If you want to build the image yourself:
 ```bash
 docker build -t crisperfx/m3u-extra:latest .
 ```
+
+## Disclaimer
+
+This project is not associated with or endorsed by any other project, service, or website. It is designed for educational purposes only.
