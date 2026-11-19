@@ -35,7 +35,7 @@ Files are stored in the folder you mount at `/downloads`.
 
 1. Paste the full `N_m3u8DL-RE` command into the text field.
 2. Click **Start download**.
-3. Use the language selector in the top-right corner to switch between Dutch, English and French. The choice is remembered in your browser.
+3. Use the compact `NL` / `EN` / `FR` button in the top-right corner to cycle between Dutch, English and French. The choice is remembered in your browser.
 4. The homepage keeps the selected streams listed under each task and shows progress for the active stream only. A completed stream stays at 100% until the next stream starts. Overall progress is averaged over all selected streams and never moves backwards. Use **Log ↗** on a task to open the detailed live log when you want it.
 5. The log page shows the selected streams and compact progress per stream. Per-segment and stream status lines (merging, decrypting, processing completed, finalizing) are filtered out to keep memory use low.
 6. Under **Files** you can find, download or delete finished `.mkv` files.
@@ -93,7 +93,7 @@ These settings build the `--select-video`, `--select-audio` and `--select-subtit
 - Server URL and token are configurable and are never hardcoded.
 - The key button can copy, send or do both; its label changes to `copy`, `send` or `copy+send`.
 - Stream selectors and `for=best` are exposed in the options page instead of being fixed in the generated command.
-- Manifest headers stay intact, including the full `index.mpd?...` URL, and VTMGO `Origin`, `Referer` and `User-Agent` headers are attached to the matching manifest.
+- Manifest headers stay intact, including the full `index.mpd?...` URL and the original `Origin`, `Referer` and `User-Agent` headers.
 - Manifests without keys produce an empty `keys: []` entry, so no-key streams still generate a usable command.
 
 ## Updates

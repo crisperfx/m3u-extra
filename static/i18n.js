@@ -41,6 +41,19 @@
       'stream.audio': 'Audio',
       'stream.subtitle': 'Ondertiteling',
       'stream.track': 'spoor',
+      'language.nld': 'Nederlands',
+      'language.eng': 'Engels',
+      'language.fra': 'Frans',
+      'language.deu': 'Duits',
+      'language.spa': 'Spaans',
+      'language.ita': 'Italiaans',
+      'language.por': 'Portugees',
+      'language.jpn': 'Japans',
+      'language.kor': 'Koreaans',
+      'language.zho': 'Chinees',
+      'language.rus': 'Russisch',
+      'language.ara': 'Arabisch',
+      'language.hin': 'Hindi',
       'stream.selected': 'Geselecteerde streams:',
       'stream.progress': 'Voortgang per stream:',
       'stream.active': 'Actieve stream:',
@@ -108,6 +121,19 @@
       'stream.audio': 'Audio',
       'stream.subtitle': 'Subtitles',
       'stream.track': 'track',
+      'language.nld': 'Dutch',
+      'language.eng': 'English',
+      'language.fra': 'French',
+      'language.deu': 'German',
+      'language.spa': 'Spanish',
+      'language.ita': 'Italian',
+      'language.por': 'Portuguese',
+      'language.jpn': 'Japanese',
+      'language.kor': 'Korean',
+      'language.zho': 'Chinese',
+      'language.rus': 'Russian',
+      'language.ara': 'Arabic',
+      'language.hin': 'Hindi',
       'stream.selected': 'Selected streams:',
       'stream.progress': 'Progress per stream:',
       'stream.active': 'Active stream:',
@@ -175,6 +201,19 @@
       'stream.audio': 'Audio',
       'stream.subtitle': 'Sous-titres',
       'stream.track': 'piste',
+      'language.nld': 'Néerlandais',
+      'language.eng': 'Anglais',
+      'language.fra': 'Français',
+      'language.deu': 'Allemand',
+      'language.spa': 'Espagnol',
+      'language.ita': 'Italien',
+      'language.por': 'Portugais',
+      'language.jpn': 'Japonais',
+      'language.kor': 'Coréen',
+      'language.zho': 'Chinois',
+      'language.rus': 'Russe',
+      'language.ara': 'Arabe',
+      'language.hin': 'Hindi',
       'stream.selected': 'Flux sélectionnés :',
       'stream.progress': 'Progression par flux :',
       'stream.active': 'Flux actif :',
@@ -204,6 +243,25 @@
       'error.jobDone': 'La tâche est déjà terminée',
       'confirm.deleteFile': 'Supprimer {name} ?'
     }
+  };
+
+  const LANGUAGE_ORDER = ['nl', 'en', 'fr'];
+  const LANGUAGE_TITLE_KEYS = { nl: 'language.nld', en: 'language.eng', fr: 'language.fra' };
+
+  const LANGUAGE_CODES = {
+    nederlands: 'nld', nld: 'nld', dut: 'nld', nl: 'nld',
+    engels: 'eng', english: 'eng', eng: 'eng', en: 'eng',
+    frans: 'fra', fra: 'fra', fre: 'fra', fr: 'fra',
+    duits: 'deu', deu: 'deu', ger: 'deu', de: 'deu',
+    spaans: 'spa', spa: 'spa', es: 'spa',
+    italiaans: 'ita', ita: 'ita', it: 'ita',
+    portugees: 'por', por: 'por', pt: 'por',
+    japans: 'jpn', jpn: 'jpn', ja: 'jpn',
+    koreaans: 'kor', kor: 'kor', ko: 'kor',
+    chinees: 'zho', zho: 'zho', chi: 'zho', zh: 'zho',
+    russisch: 'rus', rus: 'rus', ru: 'rus',
+    arabisch: 'ara', ara: 'ara', ar: 'ara',
+    hindi: 'hin', hin: 'hin', hi: 'hin'
   };
 
   const serverMessages = [
@@ -241,6 +299,16 @@
     return label === key ? raw : label;
   }
 
+  function tl(label, code) {
+    const byCode = LANGUAGE_CODES[String(code || '').toLowerCase()];
+    const byLabel = LANGUAGE_CODES[String(label || '').toLowerCase()];
+    const canonical = byCode || byLabel;
+    if (!canonical) return label;
+    const key = `language.${canonical}`;
+    const translated = t(key);
+    return translated === key ? label : translated;
+  }
+
   function tr(message) {
     if (!message) return '';
     for (const [pattern, key, vars] of serverMessages) {
@@ -253,7 +321,7 @@
   function applyLanguage(next) {
     language = translations[next] ? next : DEFAULT_LANGUAGE;
     document.documentElement.lang = language;
-    try { window.localStorage.setItem(STORAGE_KEY, language); } catch (e) { /* empty */ }
+    try { window.localStorage.setItem(STORAGE_KEY, language); } catch (e) {}
     document.querySelectorAll('[data-i18n]').forEach(element => {
       element.textContent = t(element.dataset.i18n);
     });
@@ -269,19 +337,28 @@
     document.querySelectorAll('[data-i18n-title]').forEach(element => {
       element.title = t(element.dataset.i18nTitle);
     });
-    const select = document.getElementById('language');
-    if (select) select.value = language;
+    const button = document.getElementById('language');
+    if (button) {
+      button.textContent = language.toUpperCase();
+      button.title = t(LANGUAGE_TITLE_KEYS[language]);
+    }
     window.dispatchEvent(new CustomEvent('languagechange', { detail: { language } }));
   }
 
   function initI18n() {
     applyLanguage(language);
-    const select = document.getElementById('language');
-    if (select) select.addEventListener('change', event => applyLanguage(event.target.value));
+    const button = document.getElementById('language');
+    if (button) {
+      button.addEventListener('click', () => {
+        const index = LANGUAGE_ORDER.indexOf(language);
+        applyLanguage(LANGUAGE_ORDER[(index + 1) % LANGUAGE_ORDER.length]);
+      });
+    }
   }
 
   window.t = t;
   window.tp = tp;
+  window.tl = tl;
   window.tr = tr;
   window.applyLanguage = applyLanguage;
   window.initI18n = initI18n;

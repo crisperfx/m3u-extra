@@ -128,11 +128,11 @@ code { background: rgba(148, 163, 184, .12); padding: 1px 6px; border-radius: 5p
   appearance: none; border: 1px solid var(--line); border-radius: 10px;
   background: rgba(148, 163, 184, .1); color: var(--muted);
   padding: 6px 12px; font: 600 11px/1.4 inherit; cursor: pointer;
-  min-height: 32px; touch-action: manipulation;
+  min-height: 32px; min-width: 48px; text-align: center;
+  touch-action: manipulation;
 }
 .lang-select:hover { color: var(--text); background: rgba(148, 163, 184, .16); }
 .lang-select:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px rgba(124, 140, 255, .16); }
-.lang-select option { background: var(--panel-solid); color: var(--text); }
 
 .status-strip { display: flex; align-items: center; gap: 14px; margin-bottom: 12px; }
 .phase { min-width: 128px; font-size: 13px; font-weight: 600; color: var(--accent-2); }
@@ -224,10 +224,11 @@ body.log-page { display: flex; flex-direction: column; min-height: 100vh; }
 .log-page .back { color: var(--accent-2); text-decoration: none; font-size: 12px; }
 
 @media (max-width: 720px) {
-  .topbar { padding: 12px 14px; gap: 10px; }
-  .brand { gap: 10px; }
-  .brand h1 { font-size: 17px; }
+  .topbar { padding: 12px 14px; gap: 10px; flex-wrap: nowrap; }
+  .brand { gap: 8px; flex: 1 1 auto; min-width: 0; }
+  .brand h1 { font-size: 16px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .brand p { display: none; }
+  .topbar-actions { flex: 0 0 auto; flex-wrap: nowrap; justify-content: flex-end; gap: 6px; }
   .logo { width: 36px; height: 36px; border-radius: 11px; }
   .shell { padding: 12px; gap: 12px; }
   .panel { padding: 14px; border-radius: 14px; }
@@ -262,9 +263,12 @@ body.log-page { display: flex; flex-direction: column; min-height: 100vh; }
 
 @media (max-width: 480px) {
   .panel { padding: 12px; }
-  .topbar { align-items: flex-start; }
-  .topbar-actions { margin-left: 46px; justify-content: flex-start; }
-  .lang-select { min-height: 40px; }
+  .topbar { align-items: center; }
+  .topbar-actions { margin-left: 0; }
+  .lang-select { min-width: 42px; min-height: 34px; padding: 5px 8px; }
+  #health { padding: 5px 9px; font-size: 10px; }
+  .log-page .back { font-size: 0; min-width: 34px; gap: 0; justify-content: center; }
+  .log-page .back::before { content: "←"; font-size: 16px; }
   .panel-head .btn, .head-actions .btn { width: 100%; }
   .toolbar .btn { flex: 1 1 100%; }
   .job-top { align-items: flex-start; }

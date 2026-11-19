@@ -5,10 +5,12 @@
     ['subtitle', 'stream.subtitle']
   ];
   const T = key => (window.t ? window.t(key) : key);
+  const TL = (label, code) => (window.tl ? window.tl(label, code) : label);
 
   function mainText(key, stream) {
     if (key === 'video') return stream.resolution || stream.name || T('stream.video');
-    const language = stream.language || stream.name || T('common.unknown');
+    const raw = stream.language || stream.name || T('common.unknown');
+    const language = TL(raw, stream.language_code);
     return stream.language_code ? `${language} (${stream.language_code})` : language;
   }
 
