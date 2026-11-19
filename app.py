@@ -27,6 +27,42 @@ WEB_PASSWORD = os.environ.get("WEB_PASSWORD")
 EXT_TOKEN = os.environ.get("EXT_TOKEN", "")
 
 DOWNLOAD_DIR.mkdir(parents=True, exist_ok=True)
+LOG_DIR = Path(os.environ.get("LOG_DIR", str(DOWNLOAD_DIR / ".logs"))).resolve()
+LOG_DIR.mkdir(parents=True, exist_ok=True)
+JOB_ID_PATTERN = re.compile(r"^[0-9a-f]{12}$")
+
+
+def log_file_path(job_id):
+    return LOG_DIR / f"{job_id}.log"
+
+
+def metadata_file_path(job_id):
+    return LOG_DIR / f"{job_id}.json"
+
+
+def valid_job_id(job_id):
+    return bool(JOB_ID_PATTERN.match(job_id or ""))
+
+
+def read_archived_info(job_id):
+    if not valid_job_id(job_id):
+        return None
+    try:
+        return json.loads(metadata_file_path(job_id).read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+
+
+def write_archived_info(job):
+    info = job.info()
+    info["archived"] = True
+    try:
+        metadata_file_path(job.id).write_text(
+            json.dumps(info, ensure_ascii=False), encoding="utf-8"
+        )
+    except OSError:
+        pass
+
 
 app = Flask(__name__)
 app.config["MAX_CONTENT_LENGTH"] = 512 * 1024
@@ -112,6 +148,7 @@ PROGRESS_LINE_PATTERN = re.compile(
     r"^(Vid|Aud|Sub|Text)\s+(.+?)\s*(?:-{3,}\s*)?(\d+)\s*/\s*(\d+)\s+(\d+(?:\.\d+)?)\s*%\s*(.*)$",
     re.I,
 )
+MERGING_PROGRESS_PATTERN = re.compile(r"^(Vid|Aud|Sub|Text)\b.*\bMerging\b.*\d+(?:\.\d+)?\s*%", re.I)
 DASH_AD_PERIOD_REGEX = (
     r"(mid-roll|mid_roll|midroll|pre-roll|pre_roll|preroll|"
     r"post-roll|post_roll|postroll|ad-pod|ad_pod|adpod|ad-break|ad_break|adbreak|"
@@ -288,6 +325,8 @@ def parse_stream_line(raw):
 
 def parse_progress_line(raw):
     line = clean_log_line(raw)
+    if MERGING_PROGRESS_PATTERN.match(line):
+        return None
     match = PROGRESS_LINE_PATTERN.match(line)
     if not match:
         return None
@@ -301,6 +340,19 @@ def parse_progress_line(raw):
         "tail": match.group(6).strip(),
         "text": line,
     }
+
+
+def normalize_progress_item(item):
+    total = item.get("total")
+    if total and (item.get("percent", 0) >= 99.5 or item.get("current", 0) >= total - 1):
+        item["current"] = total
+        item["percent"] = 100.0
+    return item
+
+
+def progress_key(item):
+    label = re.sub(r"[\s━─—-]+$", "", item.get("label", "")).strip()
+    return (item.get("kind"), re.sub(r"\s+", " ", label).lower())
 
 
 def aggregate_stream_progress(progress_streams):
@@ -330,7 +382,7 @@ class LogFilter:
             lines = data.split("\n")[:-1]
         kept = []
         for line in lines:
-            if not line.strip() or parse_progress_line(line):
+            if not line.strip() or parse_progress_line(line) or MERGING_PROGRESS_PATTERN.match(line):
                 continue
             kept.append(line)
         return "".join(line + "\n" for line in kept)
@@ -602,7 +654,9 @@ class Job:
         self.output = queue.Queue()
         self.streams = StreamCollector()
         self.progress_streams = {"video": [], "audio": [], "subtitle": []}
+        self.active_stream = None
         self.log_filter = LogFilter()
+        self.log_file = None
         self.status = "running"
         self.phase = "initialiseren"
         self.progress = None
@@ -627,6 +681,7 @@ class Job:
                 kind: [dict(item) for item in items]
                 for kind, items in self.progress_streams.items()
             },
+            "active_stream": dict(self.active_stream) if self.active_stream else None,
             "returncode": self.returncode,
             "created": self.created,
             "started": self.started,
@@ -637,20 +692,33 @@ class Job:
         parsed = parse_progress_line(raw)
         if not parsed:
             return False
+        normalize_progress_item(parsed)
+        key = progress_key(parsed)
         items = self.progress_streams[parsed["kind"]]
-        existing = next((item for item in items if item["label"] == parsed["label"]), None)
+        existing = next((item for item in items if progress_key(item) == key), None)
         if existing:
             existing.update(parsed)
+            current = existing
         else:
             items.append(parsed)
+            current = parsed
+        if current.get("percent", 100) < 100:
+            self.active_stream = current
+        elif self.active_stream and self.active_stream.get("percent", 100) >= 100:
+            self.active_stream = None
         return True
 
     def observe(self, line, stream_chunk=None):
         changed = False
         raw_stream = stream_chunk if stream_chunk is not None else line
+        raw_lines = re.split(r"[\r\n]+", ANSI_PATTERN.sub("", raw_stream))
+        if any(SELECTED_STREAMS_PATTERN.search(clean_log_line(part)) for part in raw_lines):
+            self.progress_streams = {"video": [], "audio": [], "subtitle": []}
+            self.active_stream = None
+            changed = True
         if self.streams.feed(raw_stream):
             changed = True
-        for segment in re.split(r"[\r\n]+", ANSI_PATTERN.sub("", raw_stream)):
+        for segment in raw_lines:
             if self.observe_progress(segment):
                 changed = True
         for segment in split_output(line):
@@ -680,11 +748,35 @@ class Job:
         if self.status == "done":
             self.phase = "klaar"
             self.progress = 100
+            for items in self.progress_streams.values():
+                for item in items:
+                    item["current"] = item.get("total", item.get("current", 0))
+                    item["percent"] = 100.0
+            self.active_stream = None
         elif self.status == "failed":
             self.phase = "gefaald"
         elif self.status == "cancelled":
             self.phase = "geannuleerd"
         self.output.put(("status", self.info()))
+
+    def append_log(self, text):
+        if not text:
+            return
+        try:
+            if self.log_file is None:
+                self.log_file = log_file_path(self.id).open("w", encoding="utf-8")
+            self.log_file.write(text)
+            self.log_file.flush()
+        except OSError:
+            pass
+
+    def close_log(self):
+        if self.log_file is not None:
+            try:
+                self.log_file.close()
+            except OSError:
+                pass
+            self.log_file = None
 
     def start(self):
         threading.Thread(target=self._run, daemon=True, name=f"job-{self.id}").start()
@@ -716,6 +808,7 @@ class Job:
                     self.observe(combined, text)
                     filtered = self.log_filter.feed(text)
                     if filtered:
+                        self.append_log(filtered)
                         self.output.put(("log", filtered))
                     carry = combined[-200:]
             elif self.proc.stdout is not None:
@@ -723,6 +816,7 @@ class Job:
                     self.observe(line, line)
                     filtered = self.log_filter.feed(line)
                     if filtered:
+                        self.append_log(filtered)
                         self.output.put(("log", filtered))
             self.returncode = self.proc.wait()
             with _jobs_lock:
@@ -730,13 +824,17 @@ class Job:
                     self.status = "done" if self.returncode == 0 else "failed"
                     self.finish_phase()
         except Exception as exc:
-            self.output.put(("log", f"[webserver] {type(exc).__name__}: {exc}\n"))
+            message = f"[webserver] {type(exc).__name__}: {exc}\n"
+            self.append_log(message)
+            self.output.put(("log", message))
             with _jobs_lock:
                 if self.status != "cancelled":
                     self.status = "failed"
                     self.finish_phase()
         finally:
             self.finished = time.time()
+            self.close_log()
+            write_archived_info(self)
             self.output.put(("end", None))
 
     def cancel(self):
@@ -759,11 +857,25 @@ class Job:
         return True
 
 
+class ArchivedJob:
+    def __init__(self, info):
+        self.info_data = info
+        self.id = info.get("id")
+
+    def info(self):
+        return dict(self.info_data)
+
+
 def get_job(job_id):
-    job = _jobs.get(job_id)
-    if job is None:
+    if not valid_job_id(job_id):
         abort(404)
-    return job
+    job = _jobs.get(job_id)
+    if job is not None:
+        return job
+    info = read_archived_info(job_id)
+    if info is not None:
+        return ArchivedJob(info)
+    abort(404)
 
 
 def resolve_file(name):
@@ -851,7 +963,13 @@ def extension_submit():
 def list_jobs():
     with _jobs_lock:
         items = [job.info() for job in _jobs.values()]
-    items.sort(key=lambda item: item["created"], reverse=True)
+    seen = {item.get("id") for item in items}
+    for path in LOG_DIR.glob("*.json"):
+        info = read_archived_info(path.stem)
+        if info and info.get("id") not in seen:
+            items.append(info)
+            seen.add(info.get("id"))
+    items.sort(key=lambda item: item.get("created", 0), reverse=True)
     return jsonify(items)
 
 
@@ -859,11 +977,25 @@ def list_jobs():
 def clear_jobs():
     global _jobs
     with _jobs_lock:
+        running_ids = {
+            job_id for job_id, job in _jobs.items() if job.status == "running"
+        }
         _jobs = {
             job_id: job
             for job_id, job in _jobs.items()
             if job.status == "running"
         }
+        stale_paths = [
+            path
+            for pattern in ("*.log", "*.json")
+            for path in LOG_DIR.glob(pattern)
+            if path.stem not in running_ids
+        ]
+    for path in stale_paths:
+        try:
+            path.unlink()
+        except OSError:
+            pass
     return jsonify({"ok": True})
 
 
@@ -877,6 +1009,18 @@ def job_stream(job_id):
     job = get_job(job_id)
 
     def generate():
+        if isinstance(job, ArchivedJob):
+            path = log_file_path(job_id)
+            if path.is_file():
+                try:
+                    with path.open("r", encoding="utf-8", errors="replace") as handle:
+                        for line in handle:
+                            yield "data: " + json.dumps({"line": line}, ensure_ascii=False) + "\n\n"
+                except OSError:
+                    pass
+            yield "event: status\ndata: " + json.dumps(job.info(), ensure_ascii=False) + "\n\n"
+            yield "event: end\ndata: " + json.dumps(job.info(), ensure_ascii=False) + "\n\n"
+            return
         while True:
             try:
                 kind, payload = job.output.get(timeout=10)
@@ -903,7 +1047,7 @@ def job_stream(job_id):
 @app.post("/api/jobs/<job_id>/cancel")
 def cancel_job(job_id):
     job = get_job(job_id)
-    if not job.cancel():
+    if isinstance(job, ArchivedJob) or not job.cancel():
         return jsonify({"error": "Taak is al klaar"}), 409
     return jsonify(job.info())
 

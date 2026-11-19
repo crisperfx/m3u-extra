@@ -31,11 +31,11 @@ Files are stored in the folder you mount at `/downloads`.
 
 1. Paste the full `N_m3u8DL-RE` command into the text field.
 2. Click **Start download**.
-3. The live log opens in a separate tab, with the current phase, overall progress and compact progress per stream instead of one line per segment.
-4. The selected video resolution, audio tracks with language and subtitle tracks with language appear directly under each task, together with their progress badges.
+3. The homepage shows only the currently active stream and its progress. Use **Log ↗** on a task to open the detailed live log when you want it.
+4. The log page shows the selected streams and compact progress per stream. Per-segment and merging lines are filtered out to keep memory use low.
 5. Under **Files** you can find, download or delete finished `.mkv` files.
 
-Active jobs live in the container memory. Files remain on disk as long as the `/downloads` mount is correct.
+Active jobs live in the container memory. Finished jobs and their filtered logs are saved under `/downloads/.logs`, so a log can be reopened after the download finishes and even after a container restart. **Clear history** also deletes those saved logs. Files remain on disk as long as the `/downloads` mount is correct.
 
 ## Settings
 
@@ -45,6 +45,7 @@ Copy `.env.example` to `.env` when using Docker Compose. Fill in only what you n
 | --- | --- | --- |
 | `TZ` | Container time zone | `Europe/Brussels` in the example |
 | `MAX_CONCURRENT` | Number of downloads that can run at the same time | `3` |
+| `LOG_DIR` | Folder for saved logs and job history | `/downloads/.logs` |
 | `WEB_USER` and `WEB_PASSWORD` | Basic login. Leave both empty to disable login protection. | empty |
 | `EXT_TOKEN` | Secret token for the browser extension. Only needed if you want to start downloads from the extension. | empty |
 
@@ -117,16 +118,3 @@ If you want to build the image yourself:
 ```bash
 docker build -t crisperfx/m3u-extra:latest .
 ```
-
-## Automatic publishing
-
-The workflow is in `.github/workflows/docker-hub.yml`. Publishing needs two repository secrets:
-
-- `DOCKERHUB_USERNAME`
-- `DOCKERHUB_TOKEN` (a Docker Hub access token, not your account password)
-
-Without these secrets the code still works, but no image is published. Set the Docker Hub repository to **Public** if everyone should be able to pull the image without logging in.
-
-After a successful workflow run, the published tags appear under the **Tags** tab on Docker Hub.
-
-README-only changes do not trigger an image build. To force a rebuild after such a change, use **Actions → Build en push Docker image → Run workflow** or change a file outside `README.md`.

@@ -190,6 +190,9 @@ pre {
   color: var(--accent-2); font-weight: 700; font-variant-numeric: tabular-nums;
   padding: 1px 7px; border-radius: 999px; background: rgba(52, 211, 181, .12);
 }
+.active-stream { margin-top: 8px; padding: 8px 10px; }
+.active-bar { height: 4px; margin-top: 6px; border-radius: 999px; background: rgba(148, 163, 184, .14); overflow: hidden; }
+.active-bar i { display: block; height: 100%; background: linear-gradient(90deg, var(--accent), var(--accent-2)); }
 
 .file-row { display: flex; align-items: center; gap: 10px; }
 .file-row a.name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text); text-decoration: none; }

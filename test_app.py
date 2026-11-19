@@ -26,6 +26,12 @@ PROGRESS_LOG = (
     "Sub nld | Nederlands | stpp            ------------------------------   0/100 0.00%               -     -     --:--:--\r"
 )
 
+MERGING_LOG = (
+    "23:05:15.665 INFO : Binary merging...\n"
+    "Vid 1280x720 | 4003 Kbps | 25 Merging  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━       4.17% 47.57MB/1.11GB - 00:00:02             \n"
+    "Vid 1280x720 | 4003 Kbps | 25 Merging  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━      95.55% 1.06GB/1.11GB 783.29MBps 00:00:00\n"
+)
+
 
 class StreamParsingTests(unittest.TestCase):
     def test_parse_video_line(self):
@@ -112,6 +118,92 @@ class ProgressTests(unittest.TestCase):
         self.assertEqual(len(info["progress_streams"]["audio"]), 2)
         self.assertEqual(len(info["progress_streams"]["subtitle"]), 1)
         self.assertIn("10.82%", info["progress_streams"]["video"][0]["text"])
+
+    def test_merging_lines_are_ignored(self):
+        self.assertIsNone(app_module.parse_progress_line(MERGING_LOG.splitlines()[1]))
+        log_filter = app_module.LogFilter()
+        output = log_filter.feed(MERGING_LOG + "INFO : Done\n")
+        self.assertNotIn("Merging", output)
+        self.assertNotIn("4.17%", output)
+        self.assertNotIn("95.55%", output)
+        self.assertIn("Done", output)
+
+    def test_duplicate_progress_rows_are_merged(self):
+        job = app_module.Job("x", ["N_m3u8DL-RE"])
+        job.observe("Vid 1920x1080 | en | h264 --- 108/1000 10.82% 1.23MB/s\n")
+        job.observe("Vid 1920x1080 | en | h264 --- 109/1000 10.92% 1.23MB/s\n")
+        info = job.info()
+        self.assertEqual(len(info["progress_streams"]["video"]), 1)
+        self.assertEqual(info["progress_streams"]["video"][0]["current"], 109)
+        self.assertEqual(info["active_stream"]["kind"], "video")
+
+    def test_near_complete_progress_is_normalized_to_100(self):
+        job = app_module.Job("x", ["N_m3u8DL-RE"])
+        job.observe("Vid 1920x1080 | en | h264 --- 999/1000 99.90% 1.23MB/s\n")
+        info = job.info()
+        self.assertEqual(info["progress_streams"]["video"][0]["percent"], 100.0)
+        self.assertIsNone(info["active_stream"])
+
+    def test_selected_streams_block_resets_progress(self):
+        job = app_module.Job("x", ["N_m3u8DL-RE"])
+        job.observe("INFO : Selected streams:\n")
+        job.observe("Vid 1920x1080 | en | h264 --- 108/1000 10.82% 1.23MB/s\n")
+        self.assertEqual(len(job.info()["progress_streams"]["video"]), 1)
+        job.observe("INFO : Selected streams:\n")
+        info = job.info()
+        self.assertEqual(info["progress_streams"]["video"], [])
+        self.assertIsNone(info["active_stream"])
+
+    def test_finish_phase_marks_all_streams_complete(self):
+        job = app_module.Job("x", ["N_m3u8DL-RE"])
+        job.observe("Vid 1920x1080 | en | h264 --- 108/1000 10.82% 1.23MB/s\n")
+        job.status = "done"
+        job.finish_phase()
+        info = job.info()
+        stream = info["progress_streams"]["video"][0]
+        self.assertEqual(stream["current"], stream["total"])
+        self.assertEqual(stream["percent"], 100.0)
+        self.assertEqual(info["progress"], 100)
+        self.assertIsNone(info["active_stream"])
+
+
+class ArchiveTests(unittest.TestCase):
+    def test_finished_job_log_can_be_reopened_and_cleared(self):
+        job = app_module.Job("N_m3u8DL-RE example", ["N_m3u8DL-RE"])
+        job.append_log("INFO : Example line\n")
+        job.close_log()
+        job.status = "done"
+        job.finish_phase()
+        app_module.write_archived_info(job)
+        log_file = app_module.log_file_path(job.id)
+        metadata_file = app_module.metadata_file_path(job.id)
+        self.assertTrue(log_file.is_file())
+        self.assertTrue(metadata_file.is_file())
+        with app_module.app.test_client() as client:
+            self.assertEqual(client.get(f"/log/{job.id}").status_code, 200)
+            detail = client.get(f"/api/jobs/{job.id}").get_json()
+            self.assertTrue(detail["archived"])
+            jobs = client.get("/api/jobs").get_json()
+            self.assertIn(job.id, [item["id"] for item in jobs])
+            stream = client.get(f"/api/jobs/{job.id}/stream").get_data(as_text=True)
+            self.assertIn("Example line", stream)
+            self.assertIn("event: end", stream)
+            self.assertEqual(client.delete("/api/jobs").status_code, 200)
+            self.assertEqual(client.get(f"/log/{job.id}").status_code, 404)
+        self.assertFalse(log_file.exists())
+        self.assertFalse(metadata_file.exists())
+
+    def test_clear_history_preserves_running_job_logs(self):
+        job = app_module.Job("N_m3u8DL-RE running", ["N_m3u8DL-RE"])
+        app_module._jobs[job.id] = job
+        job.append_log("INFO : Still running\n")
+        self.addCleanup(app_module._jobs.pop, job.id, None)
+        self.addCleanup(lambda: app_module.log_file_path(job.id).unlink(missing_ok=True))
+        self.addCleanup(job.close_log)
+        with app_module.app.test_client() as client:
+            self.assertEqual(client.delete("/api/jobs").status_code, 200)
+        self.assertIn(job.id, app_module._jobs)
+        self.assertTrue(app_module.log_file_path(job.id).is_file())
 
 
 class AdFilterTests(unittest.TestCase):

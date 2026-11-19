@@ -26,6 +26,7 @@ const ansiPattern = /\x1b\[[0-9;?]*[ -\/]*[@-~]/g;
 
 let logText = '';
 let progressLine = false;
+let logStarted = false;
 
 function phaseLabel(job) {
   if (!job) return '-';
@@ -41,6 +42,10 @@ function statusClass(job) {
 }
 
 function writeLog(text) {
+  if (!logStarted) {
+    logEl.textContent = '';
+    logStarted = true;
+  }
   const isProgress = text.endsWith('\r');
   const clean = text.replace(ansiPattern, '').replace(/\r$/, '');
   if (isProgress && progressLine) {

@@ -94,6 +94,33 @@
     return wrap;
   }
 
+  function buildActive(job) {
+    const item = job && job.active_stream;
+    if (!item) return null;
+    const wrap = document.createElement('div');
+    wrap.className = 'streams active-stream';
+    const heading = document.createElement('div');
+    heading.className = 'streams-head';
+    heading.textContent = 'Actieve stream';
+    const row = document.createElement('div');
+    row.className = `stream-row ${item.kind}`;
+    const text = document.createElement('span');
+    text.className = 'progress-line';
+    text.textContent = progressText(item);
+    const pct = document.createElement('span');
+    pct.className = 'stream-pct';
+    pct.textContent = `${item.percent}%`;
+    row.append(text, pct);
+    const bar = document.createElement('div');
+    bar.className = 'active-bar';
+    const fill = document.createElement('i');
+    fill.style.width = `${Math.max(0, Math.min(100, item.percent || 0))}%`;
+    bar.append(fill);
+    wrap.append(heading, row, bar);
+    return wrap;
+  }
+
   window.renderSelectedStreams = build;
   window.renderStreamProgress = buildProgress;
+  window.renderActiveStream = buildActive;
 })();

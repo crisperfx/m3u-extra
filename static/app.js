@@ -130,10 +130,8 @@ function renderJobs(jobs) {
     }
     meta.append(actions);
     li.append(top, meta);
-    const streamBlock = window.renderSelectedStreams ? window.renderSelectedStreams(job) : null;
-    if (streamBlock) li.append(streamBlock);
-    const progressBlock = window.renderStreamProgress ? window.renderStreamProgress(job) : null;
-    if (progressBlock) li.append(progressBlock);
+    const activeBlock = window.renderActiveStream ? window.renderActiveStream(job) : null;
+    if (activeBlock) li.append(activeBlock);
     jobsEl.append(li);
   }
 }
@@ -192,20 +190,16 @@ startBtn.onclick = async () => {
   const command = commandEl.value.trim();
   if (!command) { showError('Plak eerst een commando'); return; }
   const isMobile = window.matchMedia('(max-width: 720px)').matches;
-  const logWindow = isMobile ? null : window.open('about:blank', 'ndl-live-log');
   startBtn.disabled = true;
   try {
-    const job = await api('/api/jobs', {
+    await api('/api/jobs', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ command })
     });
-    if (logWindow) logWindow.location.href = `/log/${job.id}`;
-    else if (!isMobile) showError('Log tab geblokkeerd door de browser; gebruik "Open live log".');
     await refreshJobs();
     if (isMobile) jobsEl.scrollIntoView({ behavior: 'smooth', block: 'start' });
   } catch (e) {
-    if (logWindow) logWindow.close();
     showError(e.message);
   } finally {
     startBtn.disabled = false;
