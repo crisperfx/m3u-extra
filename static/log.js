@@ -11,26 +11,21 @@ const autoscrollEl = document.getElementById('autoscroll');
 const errorEl = document.getElementById('error');
 const copyLog = document.getElementById('copyLog');
 
-const PHASES = {
-  initialiseren: 'Initialiseren',
-  parsing: 'Manifest lezen',
-  downloading: 'Downloaden',
-  decrypting: 'Decrypteren',
-  muxing: 'Muxen',
-  klaar: 'Klaar',
-  gefaald: 'Gefaald',
-  geannuleerd: 'Geannuleerd'
-};
+const T = (key, vars) => (window.t ? window.t(key, vars) : key);
+const TP = value => (window.tp ? window.tp(value) : value);
+const TR = value => (window.tr ? window.tr(value) : value);
 
 const ansiPattern = /\x1b\[[0-9;?]*[ -\/]*[@-~]/g;
 
 let logText = '';
 let progressLine = false;
 let logStarted = false;
+let lastJob = null;
 
 function phaseLabel(job) {
-  if (!job) return '-';
-  return PHASES[job.phase] || PHASES[job.status] || job.phase || job.status || '-';
+  if (!job) return T('common.dash');
+  const raw = job.phase || job.status;
+  return raw ? TP(raw) : T('common.dash');
 }
 
 function statusClass(job) {
@@ -74,18 +69,23 @@ function updateStatus(job) {
   logStatus.className = `chip ${statusClass(job)}`;
   const value = job.progress == null ? 0 : job.progress;
   progressBar.style.width = `${value}%`;
-  progressText.textContent = job.progress == null ? '—' : `${job.progress}%`;
+  progressText.textContent = job.progress == null ? T('common.dash') : `${job.progress}%`;
+}
+
+function setJob(job) {
+  if (!job) return;
+  lastJob = job;
+  updateStatus(job);
+  jobTitle.textContent = job.title || (job.command ? job.command.slice(0, 90) : T('log.jobFallback', { id: jobId }));
 }
 
 async function refreshStatus() {
   try {
     const response = await fetch(`/api/jobs/${jobId}`);
     if (!response.ok) return;
-    const job = await response.json();
-    updateStatus(job);
-    jobTitle.textContent = job.title || (job.command ? job.command.slice(0, 90) : `Taak ${jobId}`);
+    setJob(await response.json());
   } catch (e) {
-    errorEl.textContent = e.message;
+    errorEl.textContent = TR(e.message);
   }
 }
 
@@ -95,10 +95,10 @@ source.onmessage = (event) => {
   catch (e) { writeLog(`${event.data}\n`); }
 };
 source.addEventListener('status', (event) => {
-  try { updateStatus(JSON.parse(event.data)); } catch (e) {}
+  try { setJob(JSON.parse(event.data)); } catch (e) {}
 });
 source.addEventListener('end', (event) => {
-  try { updateStatus(JSON.parse(event.data)); } catch (e) {}
+  try { setJob(JSON.parse(event.data)); } catch (e) {}
   source.close();
   refreshStatus();
 });
@@ -106,12 +106,17 @@ source.addEventListener('end', (event) => {
 copyLog.onclick = async () => {
   try {
     await navigator.clipboard.writeText(logText);
-    copyLog.textContent = 'gekopieerd';
-    setTimeout(() => { copyLog.textContent = 'Kopieer log'; }, 1200);
+    copyLog.textContent = T('action.copied');
+    setTimeout(() => { copyLog.textContent = T('action.copyLog'); }, 1200);
   } catch (e) {
-    errorEl.textContent = e.message;
+    errorEl.textContent = TR(e.message);
   }
 };
+
+window.addEventListener('languagechange', () => {
+  if (lastJob) setJob(lastJob);
+  copyLog.textContent = T('action.copyLog');
+});
 
 refreshStatus();
 setInterval(refreshStatus, 3000);

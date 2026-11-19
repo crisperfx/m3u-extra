@@ -1,20 +1,21 @@
 (function () {
   const GROUPS = [
-    ['video', 'Video'],
-    ['audio', 'Audio'],
-    ['subtitle', 'Ondertiteling']
+    ['video', 'stream.video'],
+    ['audio', 'stream.audio'],
+    ['subtitle', 'stream.subtitle']
   ];
+  const T = key => (window.t ? window.t(key) : key);
 
   function mainText(key, stream) {
-    if (key === 'video') return stream.resolution || stream.name || 'Video';
-    const language = stream.language || stream.name || 'Onbekend';
+    if (key === 'video') return stream.resolution || stream.name || T('stream.video');
+    const language = stream.language || stream.name || T('common.unknown');
     return stream.language_code ? `${language} (${stream.language_code})` : language;
   }
 
   function extraText(key, stream) {
     const bits = [];
     if (stream.details) bits.push(stream.details);
-    if (stream.track) bits.push(`spoor ${stream.track}`);
+    if (stream.track) bits.push(`${T('stream.track')} ${stream.track}`);
     return bits.join(' · ');
   }
 
@@ -22,8 +23,8 @@
     const streams = job && job.streams;
     if (!streams) return null;
     const rows = [];
-    GROUPS.forEach(([key, label]) => {
-      (streams[key] || []).forEach((stream) => rows.push({ key, label, stream }));
+    GROUPS.forEach(([key, labelKey]) => {
+      (streams[key] || []).forEach((stream) => rows.push({ key, label: T(labelKey), stream }));
     });
     if (!rows.length) return null;
 
@@ -31,7 +32,7 @@
     wrap.className = 'streams';
     const heading = document.createElement('div');
     heading.className = 'streams-head';
-    heading.textContent = 'Geselecteerde streams';
+    heading.textContent = T('stream.selected');
     wrap.append(heading);
 
     rows.forEach(({ key, label, stream }) => {
@@ -76,7 +77,7 @@
     wrap.className = 'streams progress-streams';
     const heading = document.createElement('div');
     heading.className = 'streams-head';
-    heading.textContent = 'Voortgang per stream';
+    heading.textContent = T('stream.progress');
     wrap.append(heading);
 
     rows.forEach((item) => {
@@ -109,7 +110,7 @@
     wrap.className = 'streams active-stream';
     const heading = document.createElement('div');
     heading.className = 'streams-head';
-    heading.textContent = 'Actieve stream';
+    heading.textContent = T('stream.active');
     const row = document.createElement('div');
     row.className = `stream-row ${item.kind}`;
     const text = document.createElement('span');

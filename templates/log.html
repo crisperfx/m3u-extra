@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="theme-color" content="#0b1020">
-  <title>Log · Crisperfx Stream Studio</title>
+  <title data-i18n="log.title">Log · Crisperfx Stream Studio</title>
   <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
 </head>
 <body class="log-page" data-job-id="{{ job_id }}">
@@ -16,22 +16,29 @@
       <div class="logo">▶</div>
       <div>
         <h1>Crisperfx <span>Stream Studio</span></h1>
-        <p>Live log</p>
+        <p data-i18n="log.subtitle">Live log</p>
       </div>
     </div>
-    <a class="back" href="/">← Terug naar GUI</a>
+    <div class="topbar-actions">
+      <select id="language" class="lang-select" data-i18n-aria-label="language.label" aria-label="Taal">
+        <option value="nl">Nederlands</option>
+        <option value="en">English</option>
+        <option value="fr">Français</option>
+      </select>
+      <a class="back" href="/" data-i18n="action.back">← Terug naar GUI</a>
+    </div>
   </header>
 
   <main class="shell">
     <section class="panel log-panel">
       <div class="panel-head">
         <div>
-          <span class="eyebrow">Live log</span>
-          <h2 id="jobTitle">Taak laden...</h2>
+          <span class="eyebrow" data-i18n="log.liveLog">Live log</span>
+          <h2 id="jobTitle" data-i18n="log.loadingTask">Taak laden...</h2>
         </div>
         <div class="head-actions">
-          <span id="log-status" class="chip">inactief</span>
-          <button id="copyLog" class="btn subtle">Kopieer log</button>
+          <span id="log-status" class="chip" data-i18n="log.status">inactief</span>
+          <button id="copyLog" class="btn subtle" data-i18n="action.copyLog">Kopieer log</button>
         </div>
       </div>
       <div class="status-strip">
@@ -41,14 +48,15 @@
       </div>
       <div id="jobStreams" class="streams-slot"></div>
       <div id="jobProgress" class="streams-slot"></div>
-      <pre id="log">Log laden...</pre>
+      <pre id="log" data-i18n="log.loadingLog">Log laden...</pre>
       <div class="toolbar">
-        <label class="switch"><input type="checkbox" id="autoscroll" checked> Log volgen</label>
+        <label class="switch"><input type="checkbox" id="autoscroll" checked> <span data-i18n="log.follow">Log volgen</span></label>
       </div>
       <p id="error" class="error"></p>
     </section>
   </main>
 
+  <script src="{{ url_for('static', filename='i18n.js') }}"></script>
   <script src="{{ url_for('static', filename='streams.js') }}"></script>
   <script src="{{ url_for('static', filename='log.js') }}"></script>
 </body>

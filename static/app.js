@@ -10,22 +10,18 @@ const filesEl = document.getElementById('files');
 const fileCount = document.getElementById('file-count');
 const refreshFilesBtn = document.getElementById('refreshFiles');
 
-const PHASES = {
-  initialiseren: 'Initialiseren',
-  parsing: 'Manifest lezen',
-  downloading: 'Downloaden',
-  decrypting: 'Decrypteren',
-  muxing: 'Muxen',
-  klaar: 'Klaar',
-  gefaald: 'Gefaald',
-  geannuleerd: 'Geannuleerd'
-};
+const T = (key, vars) => (window.t ? window.t(key, vars) : key);
+const TP = value => (window.tp ? window.tp(value) : value);
+const TR = value => (window.tr ? window.tr(value) : value);
 
 let activeJobId = null;
+let healthOk = null;
+let healthKey = 'health.connecting';
 
 function phaseLabel(job) {
-  if (!job) return '-';
-  return PHASES[job.phase] || PHASES[job.status] || job.phase || job.status || '-';
+  if (!job) return T('common.dash');
+  const raw = job.phase || job.status;
+  return raw ? TP(raw) : T('common.dash');
 }
 
 function statusClass(job) {
@@ -51,7 +47,7 @@ function formatTime(seconds) {
 }
 
 function showError(message) {
-  errorEl.textContent = message || '';
+  errorEl.textContent = TR(message) || '';
 }
 
 async function api(path, options) {
@@ -72,7 +68,7 @@ function setActiveJob(job) {
 function renderJobs(jobs) {
   jobsEl.innerHTML = '';
   if (!jobs.length) {
-    jobsEl.innerHTML = '<li class="empty">Nog geen taken</li>';
+    jobsEl.innerHTML = `<li class="empty">${T('empty.noJobs')}</li>`;
     return;
   }
   for (const job of jobs) {
@@ -89,7 +85,7 @@ function renderJobs(jobs) {
     phase.textContent = phaseLabel(job);
     const pctTop = document.createElement('span');
     pctTop.className = `job-pct${job.progress == null ? '' : ' has-value'}`;
-    pctTop.textContent = job.progress == null ? '—' : `${job.progress}%`;
+    pctTop.textContent = job.progress == null ? T('common.dash') : `${job.progress}%`;
     top.append(title, phase, pctTop);
 
     const meta = document.createElement('div');
@@ -115,13 +111,13 @@ function renderJobs(jobs) {
     actions.className = 'job-actions';
     const logBtn = document.createElement('button');
     logBtn.className = 'btn tiny';
-    logBtn.textContent = 'Log ↗';
+    logBtn.textContent = T('action.log');
     logBtn.onclick = () => window.open(`/log/${job.id}`, '_blank');
     actions.append(logBtn);
     if (job.status === 'running') {
       const stopJobBtn = document.createElement('button');
       stopJobBtn.className = 'btn tiny danger';
-      stopJobBtn.textContent = 'Stop';
+      stopJobBtn.textContent = T('action.stop');
       stopJobBtn.onclick = async () => {
         try { await api(`/api/jobs/${job.id}/cancel`, { method: 'POST' }); await refreshJobs(); }
         catch (e) { showError(e.message); }
@@ -142,7 +138,7 @@ function renderFiles(files) {
   filesEl.innerHTML = '';
   fileCount.textContent = files.length ? `(${files.length})` : '';
   if (!files.length) {
-    filesEl.innerHTML = '<li class="empty">Nog geen bestanden</li>';
+    filesEl.innerHTML = `<li class="empty">${T('empty.noFiles')}</li>`;
     return;
   }
   for (const file of files) {
@@ -160,9 +156,9 @@ function renderFiles(files) {
     size.textContent = formatBytes(file.size);
     const remove = document.createElement('button');
     remove.className = 'btn tiny danger';
-    remove.textContent = 'Verwijder';
+    remove.textContent = T('action.delete');
     remove.onclick = async () => {
-      if (!confirm(`${file.name} verwijderen?`)) return;
+      if (!confirm(T('confirm.deleteFile', { name: file.name }))) return;
       try { await api(`/api/files/${url}`, { method: 'DELETE' }); await refreshFiles(); }
       catch (e) { showError(e.message); }
     };
@@ -190,7 +186,7 @@ async function refreshFiles() {
 startBtn.onclick = async () => {
   showError('');
   const command = commandEl.value.trim();
-  if (!command) { showError('Plak eerst een commando'); return; }
+  if (!command) { showError(T('error.pasteCommand')); return; }
   const isMobile = window.matchMedia('(max-width: 720px)').matches;
   startBtn.disabled = true;
   try {
@@ -227,15 +223,28 @@ openLogBtn.onclick = () => {
 };
 refreshFilesBtn.onclick = refreshFiles;
 
+function renderHealth() {
+  healthEl.textContent = T(healthKey);
+  healthEl.className = `chip ${healthOk ? 'ok' : 'err'}`;
+}
+
 api('/api/health')
   .then(data => {
-    healthEl.textContent = data.ok ? 'verbonden' : 'serverfout';
-    healthEl.className = `chip ${data.ok ? 'ok' : 'err'}`;
+    healthOk = data.ok;
+    healthKey = data.ok ? 'health.connected' : 'health.error';
+    renderHealth();
   })
   .catch(() => {
-    healthEl.textContent = 'server onbereikbaar';
-    healthEl.className = 'chip err';
+    healthOk = false;
+    healthKey = 'health.unreachable';
+    renderHealth();
   });
+
+window.addEventListener('languagechange', () => {
+  if (healthOk !== null) renderHealth();
+  refreshJobs();
+  refreshFiles();
+});
 
 refreshJobs();
 refreshFiles();

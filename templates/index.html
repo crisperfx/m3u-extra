@@ -4,7 +4,8 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="theme-color" content="#0b1020">
-  <title>Crisperfx Stream Studio</title>
+    <title data-i18n="app.title">Crisperfx Stream Studio</title>
+
   <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
 </head>
 <body>
@@ -16,31 +17,38 @@
       <div class="logo">▶</div>
       <div>
         <h1>Crisperfx <span>Stream Studio</span></h1>
-        <p>N_m3u8DL-RE controller</p>
+        <p data-i18n="brand.subtitle">N_m3u8DL-RE controller</p>
       </div>
     </div>
-    <div id="health" class="chip">verbinding maken...</div>
+    <div class="topbar-actions">
+      <select id="language" class="lang-select" data-i18n-aria-label="language.label" aria-label="Taal">
+        <option value="nl">Nederlands</option>
+        <option value="en">English</option>
+        <option value="fr">Français</option>
+      </select>
+      <div id="health" class="chip" data-i18n="health.connecting">verbinden...</div>
+    </div>
   </header>
 
   <main class="shell">
     <section class="panel command-panel">
       <div class="panel-head">
         <div>
-          <span class="eyebrow">Nieuwe taak</span>
-          <h2>Commando</h2>
+          <span class="eyebrow" data-i18n="panel.newTask">Nieuwe taak</span>
+          <h2 data-i18n="panel.command">Commando</h2>
         </div>
-        <button id="clear" class="btn subtle">Geschiedenis + logs wissen</button>
+        <button id="clear" class="btn subtle" data-i18n="action.clearHistory">Geschiedenis + logs wissen</button>
       </div>
-      <textarea id="command" spellcheck="false" placeholder='N_m3u8DL-RE.exe "https://.../index.mpd" --save-name "Naam" -H "Referer: https://..." --key KID:KEY -M format=mkv'></textarea>
+      <textarea id="command" spellcheck="false" data-i18n-placeholder="command.placeholder" placeholder='N_m3u8DL-RE.exe "https://.../index.mpd" --save-name "Naam" -H "Referer: https://..." --key KID:KEY -M format=mkv'></textarea>
       <div class="toolbar">
-        <button id="start" class="btn primary">Start download</button>
-        <button id="openLog" class="btn subtle" disabled>Open live log ↗</button>
-        <button id="stop" class="btn danger" disabled>Stop</button>
+        <button id="start" class="btn primary" data-i18n="action.start">Start download</button>
+        <button id="openLog" class="btn subtle" disabled data-i18n="action.openLog">Open live log ↗</button>
+        <button id="stop" class="btn danger" disabled data-i18n="action.stop">Stop</button>
       </div>
       <p id="error" class="error"></p>
       <details class="hint">
-        <summary>Hoe werkt dit?</summary>
-        <p>Plak het volledige commando. <code>N_m3u8DL-RE.exe</code> wordt automatisch door de Linux-versie vervangen. Bestanden komen in <code>/downloads/&lt;titel&gt;/</code> terecht. Het live logboek opent in een apart tabblad; taken die via de extensie starten verschijnen hier vanzelf.</p>
+        <summary data-i18n="hint.title">Hoe werkt dit?</summary>
+        <p data-i18n-html="hint.body">Plak het volledige commando. <code>N_m3u8DL-RE.exe</code> wordt automatisch door de Linux-versie vervangen. Bestanden komen in <code>/downloads/&lt;titel&gt;/</code> terecht. Gebruik <strong>Log ↗</strong> om het live logboek te openen; taken die via de extensie starten verschijnen hier vanzelf.</p>
       </details>
     </section>
 
@@ -48,25 +56,26 @@
       <section class="panel">
         <div class="panel-head">
           <div>
-            <span class="eyebrow">Overzicht</span>
-            <h2>Taken</h2>
+            <span class="eyebrow" data-i18n="panel.overview">Overzicht</span>
+            <h2 data-i18n="panel.tasks">Taken</h2>
           </div>
         </div>
-        <ul id="jobs" class="list"><li class="empty">Nog geen taken</li></ul>
+        <ul id="jobs" class="list"><li class="empty" data-i18n="empty.noJobs">Nog geen taken</li></ul>
       </section>
       <section class="panel">
         <div class="panel-head">
           <div>
-            <span class="eyebrow">Opslag</span>
-            <h2>Bestanden <span id="file-count" class="count"></span></h2>
+            <span class="eyebrow" data-i18n="panel.storage">Opslag</span>
+            <h2><span data-i18n="panel.files">Bestanden</span> <span id="file-count" class="count"></span></h2>
           </div>
-          <button id="refreshFiles" class="btn subtle">Vernieuwen</button>
+          <button id="refreshFiles" class="btn subtle" data-i18n="action.refresh">Vernieuwen</button>
         </div>
-        <ul id="files" class="list"><li class="empty">Nog geen bestanden</li></ul>
+        <ul id="files" class="list"><li class="empty" data-i18n="empty.noFiles">Nog geen bestanden</li></ul>
       </section>
     </div>
   </main>
 
+  <script src="{{ url_for('static', filename='i18n.js') }}"></script>
   <script src="{{ url_for('static', filename='streams.js') }}"></script>
   <script src="{{ url_for('static', filename='app.js') }}"></script>
 </body>
