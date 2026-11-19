@@ -148,7 +148,10 @@ PROGRESS_LINE_PATTERN = re.compile(
     r"^(Vid|Aud|Sub|Text)\s+(.+?)\s*(?:-{3,}\s*)?(\d+)\s*/\s*(\d+)\s+(\d+(?:\.\d+)?)\s*%\s*(.*)$",
     re.I,
 )
-MERGING_PROGRESS_PATTERN = re.compile(r"^(Vid|Aud|Sub|Text)\b.*\bMerging\b.*\d+(?:\.\d+)?\s*%", re.I)
+STREAM_STATUS_BAR_PATTERN = re.compile(
+    r"^(Vid|Aud|Sub|Text)\b.*\b(?:Downloading|Decrypting|Merging|Extracting|Muxing)\b.*[━─—]{3,}",
+    re.I,
+)
 DASH_AD_PERIOD_REGEX = (
     r"(mid-roll|mid_roll|midroll|pre-roll|pre_roll|preroll|"
     r"post-roll|post_roll|postroll|ad-pod|ad_pod|adpod|ad-break|ad_break|adbreak|"
@@ -325,7 +328,7 @@ def parse_stream_line(raw):
 
 def parse_progress_line(raw):
     line = clean_log_line(raw)
-    if MERGING_PROGRESS_PATTERN.match(line):
+    if STREAM_STATUS_BAR_PATTERN.match(line):
         return None
     match = PROGRESS_LINE_PATTERN.match(line)
     if not match:
@@ -382,7 +385,7 @@ class LogFilter:
             lines = data.split("\n")[:-1]
         kept = []
         for line in lines:
-            if not line.strip() or parse_progress_line(line) or MERGING_PROGRESS_PATTERN.match(line):
+            if not line.strip() or parse_progress_line(line) or STREAM_STATUS_BAR_PATTERN.match(line):
                 continue
             kept.append(line)
         return "".join(line + "\n" for line in kept)
@@ -691,22 +694,19 @@ class Job:
     def observe_progress(self, raw):
         parsed = parse_progress_line(raw)
         if not parsed:
-            return False
+            return None
         normalize_progress_item(parsed)
         key = progress_key(parsed)
         items = self.progress_streams[parsed["kind"]]
         existing = next((item for item in items if progress_key(item) == key), None)
+        previous = existing.get("current", 0) if existing else 0
         if existing:
             existing.update(parsed)
             current = existing
         else:
             items.append(parsed)
             current = parsed
-        if current.get("percent", 100) < 100:
-            self.active_stream = current
-        elif self.active_stream and self.active_stream.get("percent", 100) >= 100:
-            self.active_stream = None
-        return True
+        return current, current.get("current", 0) - previous
 
     def observe(self, line, stream_chunk=None):
         changed = False
@@ -718,9 +718,12 @@ class Job:
             changed = True
         if self.streams.feed(raw_stream):
             changed = True
+        progress_updates = []
         for segment in raw_lines:
-            if self.observe_progress(segment):
+            update = self.observe_progress(segment)
+            if update:
                 changed = True
+                progress_updates.append(update)
         for segment in split_output(line):
             if parse_progress_line(segment):
                 continue
@@ -741,6 +744,23 @@ class Job:
         if aggregate is not None and aggregate != self.progress:
             self.progress = aggregate
             changed = True
+        advancing = [
+            (item, delta)
+            for item, delta in progress_updates
+            if delta > 0 and item.get("percent", 100) < 100
+        ]
+        if advancing:
+            self.active_stream = max(advancing, key=lambda pair: pair[1])[0]
+        elif self.active_stream is None or self.active_stream.get("percent", 100) >= 100:
+            self.active_stream = next(
+                (
+                    item
+                    for items in self.progress_streams.values()
+                    for item in items
+                    if item.get("current", 0) > 0 and item.get("percent", 100) < 100
+                ),
+                None,
+            )
         if changed:
             self.output.put(("status", self.info()))
 
@@ -869,12 +889,12 @@ class ArchivedJob:
 def get_job(job_id):
     if not valid_job_id(job_id):
         abort(404)
-    job = _jobs.get(job_id)
-    if job is not None:
-        return job
     info = read_archived_info(job_id)
     if info is not None:
         return ArchivedJob(info)
+    job = _jobs.get(job_id)
+    if job is not None:
+        return job
     abort(404)
 
 

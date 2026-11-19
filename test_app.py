@@ -32,6 +32,13 @@ MERGING_LOG = (
     "Vid 1280x720 | 4003 Kbps | 25 Merging  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━      95.55% 1.06GB/1.11GB 783.29MBps 00:00:00\n"
 )
 
+DECRYPTING_LOG = (
+    "23:24:24.484 INFO : Decrypting using MP4DECRYPT...\n"
+    "Vid 1280x720 | 4003 Kbps | 25 Decrypting ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━           - - - 00:00:00\n"
+    "Vid 1280x720 | 4003 Kbps | 25 Decrypting ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━           - - - 00:00:00\n"
+    "Vid 1280x720 | 4003 Kbps | 25 Decrypting ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━           - - - 00:00:00\n"
+)
+
 
 class StreamParsingTests(unittest.TestCase):
     def test_parse_video_line(self):
@@ -128,6 +135,13 @@ class ProgressTests(unittest.TestCase):
         self.assertNotIn("95.55%", output)
         self.assertIn("Done", output)
 
+    def test_decrypting_status_lines_are_ignored(self):
+        self.assertIsNone(app_module.parse_progress_line(DECRYPTING_LOG.splitlines()[1]))
+        log_filter = app_module.LogFilter()
+        output = log_filter.feed(DECRYPTING_LOG)
+        self.assertIn("Decrypting using MP4DECRYPT", output)
+        self.assertNotIn("Decrypting ━", output)
+
     def test_duplicate_progress_rows_are_merged(self):
         job = app_module.Job("x", ["N_m3u8DL-RE"])
         job.observe("Vid 1920x1080 | en | h264 --- 108/1000 10.82% 1.23MB/s\n")
@@ -153,6 +167,22 @@ class ProgressTests(unittest.TestCase):
         info = job.info()
         self.assertEqual(info["progress_streams"]["video"], [])
         self.assertIsNone(info["active_stream"])
+
+    def test_active_stream_is_the_one_that_advances(self):
+        job = app_module.Job("x", ["N_m3u8DL-RE"])
+        job.observe(
+            "Vid 1920x1080 | en | h264 --- 0/100 0.00%\n"
+            "Aud 192 Kbps | Stereo | eng --- 0/100 0.00%\n"
+            "Sub nld | Nederlands --- 0/100 0.00%\n"
+        )
+        job.observe(
+            "Vid 1920x1080 | en | h264 --- 5/100 5.00%\n"
+            "Aud 192 Kbps | Stereo | eng --- 0/100 0.00%\n"
+            "Sub nld | Nederlands --- 0/100 0.00%\n"
+        )
+        active = job.info()["active_stream"]
+        self.assertEqual(active["kind"], "video")
+        self.assertEqual(active["current"], 5)
 
     def test_finish_phase_marks_all_streams_complete(self):
         job = app_module.Job("x", ["N_m3u8DL-RE"])
@@ -192,6 +222,21 @@ class ArchiveTests(unittest.TestCase):
             self.assertEqual(client.get(f"/log/{job.id}").status_code, 404)
         self.assertFalse(log_file.exists())
         self.assertFalse(metadata_file.exists())
+
+    def test_finished_live_job_uses_saved_log(self):
+        job = app_module.Job("N_m3u8DL-RE live", ["N_m3u8DL-RE"])
+        job.append_log("INFO : Saved live line\n")
+        job.close_log()
+        job.status = "done"
+        job.finish_phase()
+        app_module.write_archived_info(job)
+        app_module._jobs[job.id] = job
+        self.addCleanup(app_module._jobs.pop, job.id, None)
+        self.addCleanup(lambda: app_module.metadata_file_path(job.id).unlink(missing_ok=True))
+        self.addCleanup(lambda: app_module.log_file_path(job.id).unlink(missing_ok=True))
+        with app_module.app.test_client() as client:
+            stream = client.get(f"/api/jobs/{job.id}/stream").get_data(as_text=True)
+        self.assertIn("Saved live line", stream)
 
     def test_clear_history_preserves_running_job_logs(self):
         job = app_module.Job("N_m3u8DL-RE running", ["N_m3u8DL-RE"])

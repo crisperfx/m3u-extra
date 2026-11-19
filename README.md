@@ -32,7 +32,7 @@ Files are stored in the folder you mount at `/downloads`.
 1. Paste the full `N_m3u8DL-RE` command into the text field.
 2. Click **Start download**.
 3. The homepage shows only the currently active stream and its progress. Use **Log ↗** on a task to open the detailed live log when you want it.
-4. The log page shows the selected streams and compact progress per stream. Per-segment and merging lines are filtered out to keep memory use low.
+4. The log page shows the selected streams and compact progress per stream. Per-segment, merging and decrypting status lines are filtered out to keep memory use low.
 5. Under **Files** you can find, download or delete finished `.mkv` files.
 
 Active jobs live in the container memory. Finished jobs and their filtered logs are saved under `/downloads/.logs`, so a log can be reopened after the download finishes and even after a container restart. **Clear history** also deletes those saved logs. Files remain on disk as long as the `/downloads` mount is correct.

@@ -81,14 +81,22 @@
 
     rows.forEach((item) => {
       const row = document.createElement('div');
-      row.className = `stream-row ${item.kind}`;
+      row.className = `stream-row progress-row ${item.kind}`;
+      const top = document.createElement('div');
+      top.className = 'progress-row-top';
       const text = document.createElement('span');
       text.className = 'progress-line';
       text.textContent = progressText(item);
       const pct = document.createElement('span');
       pct.className = 'stream-pct';
       pct.textContent = `${item.percent}%`;
-      row.append(text, pct);
+      top.append(text, pct);
+      const bar = document.createElement('div');
+      bar.className = 'stream-bar';
+      const fill = document.createElement('i');
+      fill.style.width = `${Math.max(0, Math.min(100, item.percent || 0))}%`;
+      bar.append(fill);
+      row.append(top, bar);
       wrap.append(row);
     });
     return wrap;
