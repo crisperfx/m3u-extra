@@ -10,6 +10,7 @@ const progressEl = document.getElementById('jobProgress');
 const autoscrollEl = document.getElementById('autoscroll');
 const errorEl = document.getElementById('error');
 const copyLog = document.getElementById('copyLog');
+const topBtn = document.getElementById('backToTop');
 
 const T = (key, vars) => (window.t ? window.t(key, vars) : key);
 const TP = value => (window.tp ? window.tp(value) : value);
@@ -117,6 +118,14 @@ copyLog.onclick = async () => {
     errorEl.textContent = TR(e.message);
   }
 };
+
+function updateTopButton() {
+  topBtn.classList.toggle('visible', window.scrollY > 120);
+}
+
+window.addEventListener('scroll', updateTopButton, { passive: true });
+topBtn.onclick = () => window.scrollTo({ top: 0, behavior: 'smooth' });
+updateTopButton();
 
 window.addEventListener('languagechange', () => {
   if (lastJob) setJob(lastJob);
