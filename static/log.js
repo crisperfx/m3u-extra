@@ -24,6 +24,7 @@ let logStarted = false;
 let lastJob = null;
 let lastStatusKey = '';
 let statusTimer = null;
+let layoutTimer = null;
 
 function phaseLabel(job) {
   if (!job) return T('common.dash');
@@ -44,6 +45,21 @@ function followLog() {
   logEl.scrollTop = logEl.scrollHeight;
 }
 
+function refreshLayout() {
+  document.body.classList.toggle('layout-refresh');
+  void document.body.offsetHeight;
+  document.body.classList.toggle('layout-refresh');
+  void document.documentElement.offsetHeight;
+}
+
+function scheduleLayoutRefresh() {
+  if (layoutTimer) clearTimeout(layoutTimer);
+  layoutTimer = setTimeout(() => {
+    layoutTimer = null;
+    refreshLayout();
+  }, 200);
+}
+
 function writeLog(text) {
   if (!logStarted) {
     logEl.textContent = '';
@@ -62,6 +78,7 @@ function writeLog(text) {
   }
   logEl.textContent = logText;
   followLog();
+  scheduleLayoutRefresh();
 }
 
 function statusKey(job) {
@@ -127,6 +144,7 @@ source.addEventListener('end', (event) => {
   source.close();
   if (statusTimer) clearInterval(statusTimer);
   refreshStatus();
+  refreshLayout();
 });
 
 copyLog.onclick = async () => {
@@ -151,6 +169,8 @@ window.addEventListener('languagechange', () => {
   if (lastJob) setJob(lastJob);
   copyLog.textContent = T('action.copyLog');
 });
+
+window.addEventListener('load', refreshLayout);
 
 refreshStatus();
 statusTimer = setInterval(refreshStatus, 3000);
