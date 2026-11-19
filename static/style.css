@@ -218,6 +218,7 @@ pre {
 
 body.log-page { display: flex; flex-direction: column; min-height: 100vh; }
 .log-page .shell { width: 100%; max-width: none; flex: 1; }
+.log-page .topbar { position: sticky; top: 0; z-index: 10; background: rgba(8, 12, 24, .96); }
 .log-page pre { min-height: calc(100vh - 320px); max-height: none; }
 .log-page .status-strip { margin-bottom: 14px; }
 .log-page .progress-line { white-space: normal; overflow: visible; text-overflow: clip; }
@@ -244,6 +245,7 @@ body.log-page { display: flex; flex-direction: column; min-height: 100vh; }
   .progress { flex: 1 1 60%; }
   .progress-text { min-width: 38px; }
   pre { min-height: 180px; max-height: 50vh; font-size: 12px; padding: 12px; }
+  .log-page pre { overflow: visible; min-height: 0; max-height: none; }
   textarea { min-height: 120px; font-size: 16px; padding: 12px; }
   .list { max-height: none; }
   .job-detail { max-width: 140px; }

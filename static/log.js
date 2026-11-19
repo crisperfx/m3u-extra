@@ -21,6 +21,7 @@ let logText = '';
 let progressLine = false;
 let logStarted = false;
 let lastJob = null;
+let scrollQueued = false;
 
 function phaseLabel(job) {
   if (!job) return T('common.dash');
@@ -34,6 +35,17 @@ function statusClass(job) {
   if (job.status === 'done') return 'ok';
   if (job.status === 'failed') return 'err';
   return '';
+}
+
+function followLog() {
+  if (!autoscrollEl.checked) return;
+  logEl.scrollTop = logEl.scrollHeight;
+  if (scrollQueued || !window.matchMedia('(max-width: 720px)').matches) return;
+  scrollQueued = true;
+  requestAnimationFrame(() => {
+    scrollQueued = false;
+    if (autoscrollEl.checked) window.scrollTo(0, document.documentElement.scrollHeight);
+  });
 }
 
 function writeLog(text) {
@@ -53,7 +65,7 @@ function writeLog(text) {
     progressLine = isProgress;
   }
   logEl.textContent = logText;
-  if (autoscrollEl.checked) logEl.scrollTop = logEl.scrollHeight;
+  followLog();
 }
 
 function updateStatus(job) {
@@ -112,6 +124,8 @@ copyLog.onclick = async () => {
     errorEl.textContent = TR(e.message);
   }
 };
+
+autoscrollEl.addEventListener('change', followLog);
 
 window.addEventListener('languagechange', () => {
   if (lastJob) setJob(lastJob);
