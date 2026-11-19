@@ -22,6 +22,8 @@ let logText = '';
 let progressLine = false;
 let logStarted = false;
 let lastJob = null;
+let lastStatusKey = '';
+let statusTimer = null;
 
 function phaseLabel(job) {
   if (!job) return T('common.dash');
@@ -62,8 +64,24 @@ function writeLog(text) {
   followLog();
 }
 
+function statusKey(job) {
+  return JSON.stringify([
+    job.title,
+    job.phase,
+    job.status,
+    job.progress,
+    job.detail,
+    job.streams,
+    job.progress_streams,
+    job.active_stream
+  ]);
+}
+
 function updateStatus(job) {
   if (!job) return;
+  const key = statusKey(job);
+  if (key === lastStatusKey) return;
+  lastStatusKey = key;
   streamsEl.replaceChildren();
   const streamBlock = window.renderSelectedStreams ? window.renderSelectedStreams(job) : null;
   if (streamBlock) streamsEl.append(streamBlock);
@@ -82,7 +100,8 @@ function setJob(job) {
   if (!job) return;
   lastJob = job;
   updateStatus(job);
-  jobTitle.textContent = job.title || (job.command ? job.command.slice(0, 90) : T('log.jobFallback', { id: jobId }));
+  const title = job.title || (job.command ? job.command.slice(0, 90) : T('log.jobFallback', { id: jobId }));
+  if (jobTitle.textContent !== title) jobTitle.textContent = title;
 }
 
 async function refreshStatus() {
@@ -106,6 +125,7 @@ source.addEventListener('status', (event) => {
 source.addEventListener('end', (event) => {
   try { setJob(JSON.parse(event.data)); } catch (e) {}
   source.close();
+  if (statusTimer) clearInterval(statusTimer);
   refreshStatus();
 });
 
@@ -133,4 +153,4 @@ window.addEventListener('languagechange', () => {
 });
 
 refreshStatus();
-setInterval(refreshStatus, 3000);
+statusTimer = setInterval(refreshStatus, 3000);
