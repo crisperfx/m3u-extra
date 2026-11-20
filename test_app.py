@@ -309,6 +309,38 @@ class AdFilterTests(unittest.TestCase):
         self.assertNotIn("-dv", argv)
         self.assertIn("--ad-keyword", argv)
 
+    def test_subtitle_language_zzz_filter_is_removed(self):
+        command = (
+            'N_m3u8DL-RE.exe "https://example.com/index.mpd?'
+            'aws.manifestfilter=subtitle_language%3Azzz%3Btrickplay_type%3Anone%3Baudio_codec%3AAACL" '
+            '--save-name test'
+        )
+        with mock.patch.object(app_module, "fetch_manifest_text", return_value=None):
+            argv = app_module.parse_command(command)
+        source = argv[1]
+        self.assertNotIn("subtitle_language", source)
+        self.assertIn("trickplay_type%3Anone", source)
+        self.assertIn("audio_codec%3AAACL", source)
+
+    def test_other_subtitle_language_filter_is_preserved(self):
+        command = (
+            'N_m3u8DL-RE.exe "https://example.com/index.mpd?'
+            'aws.manifestfilter=subtitle_language%3Anld%3Btrickplay_type%3Anone"'
+        )
+        with mock.patch.object(app_module, "fetch_manifest_text", return_value=None):
+            argv = app_module.parse_command(command)
+        self.assertIn("subtitle_language%3Anld", argv[1])
+
+    def test_empty_manifestfilter_is_removed(self):
+        command = (
+            'N_m3u8DL-RE.exe "https://example.com/index.mpd?'
+            'aws.manifestfilter=subtitle_language%3Azzz&foo=bar"'
+        )
+        with mock.patch.object(app_module, "fetch_manifest_text", return_value=None):
+            argv = app_module.parse_command(command)
+        self.assertNotIn("aws.manifestfilter", argv[1])
+        self.assertIn("foo=bar", argv[1])
+
 
 if __name__ == "__main__":
     unittest.main()

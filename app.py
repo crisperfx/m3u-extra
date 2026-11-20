@@ -11,7 +11,7 @@ import uuid
 import urllib.request
 import xml.etree.ElementTree as ET
 from pathlib import Path
-from urllib.parse import urlparse
+from urllib.parse import parse_qsl, urlencode, urlparse, urlsplit, urlunsplit
 
 from flask import Flask, Response, abort, jsonify, render_template, request, send_file
 
@@ -30,6 +30,7 @@ DOWNLOAD_DIR.mkdir(parents=True, exist_ok=True)
 LOG_DIR = Path(os.environ.get("LOG_DIR", str(DOWNLOAD_DIR / ".logs"))).resolve()
 LOG_DIR.mkdir(parents=True, exist_ok=True)
 JOB_ID_PATTERN = re.compile(r"^[0-9a-f]{12}$")
+SUBTITLE_FILTER_ZZZ = re.compile(r"^subtitle_language\s*:\s*zzz$", re.I)
 
 
 def log_file_path(job_id):
@@ -511,6 +512,48 @@ def extract_headers(tokens):
     return headers
 
 
+def strip_subtitle_filter(url):
+    try:
+        parts = urlsplit(url)
+    except ValueError:
+        return url
+    if not parts.query:
+        return url
+
+    changed = False
+    kept = []
+    for key, value in parse_qsl(parts.query, keep_blank_values=True):
+        if key.lower() == "aws.manifestfilter" and value:
+            clauses = [clause for clause in value.split(";") if clause.strip()]
+            remaining = [
+                clause
+                for clause in clauses
+                if not SUBTITLE_FILTER_ZZZ.fullmatch(clause.strip())
+            ]
+            if len(remaining) != len(clauses):
+                changed = True
+                if remaining:
+                    kept.append((key, ";".join(remaining)))
+                continue
+        kept.append((key, value))
+
+    if not changed:
+        return url
+    return urlunsplit(
+        (parts.scheme, parts.netloc, parts.path, urlencode(kept), parts.fragment)
+    )
+
+
+def sanitize_manifest_filters(tokens):
+    source = find_manifest_input(tokens)
+    if not source:
+        return tokens
+    cleaned = strip_subtitle_filter(source)
+    if cleaned == source:
+        return tokens
+    return [cleaned if token == source else token for token in tokens]
+
+
 def fetch_manifest_text(url, headers):
     if not url.lower().startswith(("http://", "https://")):
         return None
@@ -639,6 +682,7 @@ def parse_command(raw):
 
     args, save_dir_raw = strip_option(args, "--save-dir")
     args, save_name_raw = strip_option(args, "--save-name")
+    args = sanitize_manifest_filters(args)
     args = inject_dash_ad_filters(args)
 
     base_dir = safe_dir(save_dir_raw)
