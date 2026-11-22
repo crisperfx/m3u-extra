@@ -41,8 +41,9 @@ Files are stored in the folder you mount at `/downloads`.
 6. Under **Files** you can find, download or delete finished `.mkv` files.
 7. Use **Options** to set an uploader tag and to enable or disable automatic resolution tags. Extension titles become `Title (year) 1080p Uploader` or `Series S01E03 1080p Uploader`. The resolution is measured from the downloaded file with `ffprobe` after completion, so the final name always matches the effective downloaded resolution.
 8. Use **Queue** to add a job without starting it. Queued jobs appear in both the queue list and the task list; **Start queue** launches as many queued jobs as `MAX_CONCURRENT` allows.
+9. In **Options**, turn off **Start downloads immediately** to pause new submissions globally. They are queued instead of starting; **Start queue** remains the manual override.
 
-Active jobs live in the container memory. Finished jobs and their filtered logs are saved under `/downloads/.logs`, so a log can be reopened after the download finishes and even after a container restart. **Clear history** also deletes those saved logs. Files remain on disk as long as the `/downloads` mount is correct.
+Active jobs live in the container memory. Finished jobs and their filtered logs are saved under `/downloads/.logs`, so a log can be reopened after the download finishes and even after a container restart. Settings live in `/settings/settings.json`, outside the downloads mount. **Clear history** deletes the saved logs but never the settings. Files remain on disk as long as the `/downloads` mount is correct.
 
 ## Settings
 
@@ -53,9 +54,11 @@ Copy `.env.example` to `.env` when using Docker Compose. Fill in only what you n
 | `TZ` | Container time zone | `Europe/Brussels` in the example |
 | `MAX_CONCURRENT` | Number of downloads that can run at the same time | `3` |
 | `LOG_DIR` | Folder for saved logs and job history | `/downloads/.logs` |
-| `SETTINGS_FILE` | File with the uploader tag and resolution setting | `/downloads/.settings.json` |
+| `SETTINGS_DIR` | Folder for `settings.json` with the uploader tag, resolution and auto-start settings | `/settings` |
 | `WEB_USER` and `WEB_PASSWORD` | Basic login. Leave both empty to disable login protection. | empty |
 | `EXT_TOKEN` | Secret token for the browser extension. Only needed if you want to start downloads from the extension. | empty |
+
+`SETTINGS_FILE` is still accepted if you need to override the exact settings-file path.
 
 For the browser extension, set the server URL to the address you use to open the web UI, for example `http://<server-or-nas-ip>:8000` (or `:7890` with the included Dockhand stack). Use the same value as `EXT_TOKEN` for the API token; leave it empty only if `EXT_TOKEN` is empty.
 
@@ -63,10 +66,10 @@ For the browser extension, set the server URL to the address you use to open the
 
 The modified extension is included in `extension/`:
 
-- `WidevineProxy2-1.2.8.crx` — drag this file onto `chrome://extensions` with Developer mode enabled.
-- `WidevineProxy2-1.2.8.zip` — unpack it, then use **Load unpacked** and select the extracted folder (the one containing `manifest.json`).
+- `WidevineProxy2-1.2.9.crx` — drag this file onto `chrome://extensions` with Developer mode enabled.
+- `WidevineProxy2-1.2.9.zip` — unpack it, then use **Load unpacked** and select the extracted folder (the one containing `manifest.json`).
 
-The source files are in `extension/src`. The server URL and token are not hardcoded; open the extension options and enter them yourself.
+The source files are in `extension/src`. The server URL and token are not hardcoded; open the extension options and enter them yourself. The manifest contains a fixed public key, so unpacked installs keep the same extension ID and keep these settings on later updates.
 
 ### What to fill in
 

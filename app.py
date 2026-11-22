@@ -34,8 +34,14 @@ EXT_TOKEN = os.environ.get("EXT_TOKEN", "")
 DOWNLOAD_DIR.mkdir(parents=True, exist_ok=True)
 LOG_DIR = Path(os.environ.get("LOG_DIR", str(DOWNLOAD_DIR / ".logs"))).resolve()
 LOG_DIR.mkdir(parents=True, exist_ok=True)
-SETTINGS_FILE = Path(os.environ.get("SETTINGS_FILE", str(DOWNLOAD_DIR / ".settings.json")))
-DEFAULT_SETTINGS = {"uploader_tag": "", "resolution_tag": True}
+SETTINGS_DIR = Path(os.environ.get("SETTINGS_DIR", "/settings")).resolve()
+try:
+    SETTINGS_DIR.mkdir(parents=True, exist_ok=True)
+except OSError:
+    pass
+SETTINGS_FILE = Path(os.environ.get("SETTINGS_FILE", str(SETTINGS_DIR / "settings.json")))
+LEGACY_SETTINGS_FILE = DOWNLOAD_DIR / ".settings.json"
+DEFAULT_SETTINGS = {"uploader_tag": "", "resolution_tag": True, "auto_start": True}
 JOB_ID_PATTERN = re.compile(r"^[0-9a-f]{12}$")
 SUBTITLE_FILTER_ZZZ = re.compile(r"^subtitle_language\s*:\s*zzz$", re.I)
 RESOLUTION_TAG_PATTERN = re.compile(r"(?<!\S)\d{3,4}p(?!\S)", re.I)
@@ -82,14 +88,25 @@ def clean_tag(value, limit=40):
 
 def load_settings():
     settings = dict(DEFAULT_SETTINGS)
+    path = SETTINGS_FILE
+    if not path.exists() and LEGACY_SETTINGS_FILE.exists():
+        try:
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(
+                LEGACY_SETTINGS_FILE.read_text(encoding="utf-8"), encoding="utf-8"
+            )
+            LEGACY_SETTINGS_FILE.unlink()
+        except OSError:
+            path = LEGACY_SETTINGS_FILE
     try:
-        data = json.loads(SETTINGS_FILE.read_text(encoding="utf-8"))
+        data = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, ValueError):
         return settings
     if not isinstance(data, dict):
         return settings
     settings["uploader_tag"] = clean_tag(data.get("uploader_tag"))
     settings["resolution_tag"] = bool(data.get("resolution_tag", True))
+    settings["auto_start"] = bool(data.get("auto_start", True))
     return settings
 
 
@@ -100,7 +117,10 @@ def save_settings(data):
             current["uploader_tag"] = clean_tag(data.get("uploader_tag"))
         if "resolution_tag" in data:
             current["resolution_tag"] = bool(data.get("resolution_tag"))
+        if "auto_start" in data:
+            current["auto_start"] = bool(data.get("auto_start"))
     with _settings_lock:
+        SETTINGS_FILE.parent.mkdir(parents=True, exist_ok=True)
         SETTINGS_FILE.write_text(
             json.dumps(current, ensure_ascii=False, indent=2), encoding="utf-8"
         )
@@ -1299,7 +1319,9 @@ def health():
     )
 
 
-def enqueue_job(command, argv, queue=False):
+def enqueue_job(command, argv, queue=None):
+    if queue is None:
+        queue = not bool(load_settings().get("auto_start", True))
     with _jobs_lock:
         if not queue:
             active = sum(1 for item in _jobs.values() if item.status == "running")
@@ -1325,7 +1347,8 @@ def create_job():
     except ValueError as exc:
         return jsonify({"error": str(exc)}), 400
 
-    job = enqueue_job(command, argv, queue=bool(data.get("queue")))
+    queue = data.get("queue")
+    job = enqueue_job(command, argv, queue=None if queue is None else bool(queue))
     if job is None:
         return jsonify({"error": f"Maximaal {MAX_CONCURRENT} gelijktijdige taken"}), 429
     return jsonify(job.info()), 201
@@ -1345,7 +1368,8 @@ def extension_submit():
     except ValueError as exc:
         return jsonify({"error": str(exc)}), 400
 
-    job = enqueue_job(command, argv, queue=bool(data.get("queue")))
+    queue = data.get("queue")
+    job = enqueue_job(command, argv, queue=None if queue is None else bool(queue))
     if job is None:
         return jsonify({"error": f"Maximaal {MAX_CONCURRENT} gelijktijdige taken"}), 429
     return jsonify({"ok": True, "id": job.id}), 201

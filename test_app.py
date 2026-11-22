@@ -413,8 +413,82 @@ class SettingsAndQueueTests(unittest.TestCase):
                 self.assertEqual(saved.status_code, 200)
                 loaded = client.get("/api/settings").get_json()
                 self.assertEqual(
-                    loaded, {"uploader_tag": "YTS", "resolution_tag": False}
+                    loaded,
+                    {
+                        "uploader_tag": "YTS",
+                        "resolution_tag": False,
+                        "auto_start": True,
+                    },
                 )
+
+    def test_legacy_settings_are_migrated(self):
+        with (
+            tempfile.TemporaryDirectory() as settings_dir,
+            tempfile.TemporaryDirectory() as download_dir,
+        ):
+            target = Path(settings_dir) / "settings.json"
+            legacy = Path(download_dir) / ".settings.json"
+            legacy.write_text(
+                json.dumps({"uploader_tag": "YTS", "auto_start": False}),
+                encoding="utf-8",
+            )
+            with (
+                mock.patch.object(app_module, "SETTINGS_FILE", target),
+                mock.patch.object(app_module, "LEGACY_SETTINGS_FILE", legacy),
+            ):
+                loaded = app_module.load_settings()
+            self.assertEqual(loaded["uploader_tag"], "YTS")
+            self.assertFalse(loaded["auto_start"])
+            self.assertTrue(target.exists())
+            self.assertFalse(legacy.exists())
+
+    def test_auto_start_false_queues_new_jobs(self):
+        command = 'N_m3u8DL-RE.exe "https://example.com/index.mpd"'
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "settings.json"
+            path.write_text(
+                json.dumps(
+                    {"uploader_tag": "", "resolution_tag": True, "auto_start": False}
+                ),
+                encoding="utf-8",
+            )
+            with (
+                mock.patch.object(app_module, "SETTINGS_FILE", path),
+                mock.patch.object(app_module, "_jobs", {}),
+                mock.patch.object(app_module.Job, "launch") as launch,
+                mock.patch.object(app_module, "fetch_manifest_text", return_value=None),
+            ):
+                response = app_module.app.test_client().post(
+                    "/api/jobs", json={"command": command}
+                )
+                self.assertEqual(response.status_code, 201)
+                job = app_module._jobs[response.get_json()["id"]]
+                self.assertEqual(job.status, "queued")
+                launch.assert_not_called()
+
+    def test_explicit_start_overrides_auto_start_false(self):
+        command = 'N_m3u8DL-RE.exe "https://example.com/index.mpd"'
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "settings.json"
+            path.write_text(
+                json.dumps(
+                    {"uploader_tag": "", "resolution_tag": True, "auto_start": False}
+                ),
+                encoding="utf-8",
+            )
+            with (
+                mock.patch.object(app_module, "SETTINGS_FILE", path),
+                mock.patch.object(app_module, "_jobs", {}),
+                mock.patch.object(app_module.Job, "launch") as launch,
+                mock.patch.object(app_module, "fetch_manifest_text", return_value=None),
+            ):
+                response = app_module.app.test_client().post(
+                    "/api/jobs", json={"command": command, "queue": False}
+                )
+                self.assertEqual(response.status_code, 201)
+                job = app_module._jobs[response.get_json()["id"]]
+                self.assertEqual(job.status, "running")
+                launch.assert_called_once()
 
     def test_uploader_tag_is_appended_to_save_name(self):
         command = 'N_m3u8DL-RE.exe "https://example.com/index.mpd"'

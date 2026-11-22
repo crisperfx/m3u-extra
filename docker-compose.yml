@@ -6,9 +6,11 @@ services:
       - "8000:8000"
     volumes:
       - ./downloads:/downloads
+      - ./settings:/settings
     environment:
       TZ: Europe/Brussels
       MAX_CONCURRENT: "3"
+      SETTINGS_DIR: /settings
       WEB_USER: ${WEB_USER:-}
       WEB_PASSWORD: ${WEB_PASSWORD:-}
       EXT_TOKEN: ${EXT_TOKEN:-}

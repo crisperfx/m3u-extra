@@ -41,6 +41,7 @@ LABEL org.opencontainers.image.source="https://github.com/crisperfx/m3u-extra" \
 
 ENV PYTHONUNBUFFERED=1 \
     DOWNLOAD_DIR=/downloads \
+    SETTINGS_DIR=/settings \
     NDL_BINARY=/usr/local/bin/N_m3u8DL-RE \
     FFMPEG_BINARY=/usr/bin/ffmpeg \
     MP4DECRYPT_BINARY=/usr/local/bin/mp4decrypt
@@ -67,7 +68,7 @@ COPY app.py ./
 COPY templates/ ./templates/
 COPY static/ ./static/
 
-RUN mkdir -p /downloads
+RUN mkdir -p /downloads /settings
 
 EXPOSE 8000
 

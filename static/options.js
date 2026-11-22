@@ -1,5 +1,6 @@
 const uploaderEl = document.getElementById('uploaderTag');
 const resolutionEl = document.getElementById('resolutionTag');
+const autoStartEl = document.getElementById('autoStart');
 const saveBtn = document.getElementById('saveOptions');
 const errorEl = document.getElementById('error');
 const savedEl = document.getElementById('saved');
@@ -21,6 +22,7 @@ async function loadOptions() {
     const data = await response.json();
     uploaderEl.value = data.uploader_tag || '';
     resolutionEl.checked = data.resolution_tag !== false;
+    autoStartEl.checked = data.auto_start !== false;
     savedEl.hidden = true;
   } catch (e) {
     errorEl.textContent = e.message;
@@ -36,7 +38,8 @@ saveBtn.onclick = async () => {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         uploader_tag: uploaderEl.value,
-        resolution_tag: resolutionEl.checked
+        resolution_tag: resolutionEl.checked,
+        auto_start: autoStartEl.checked
       })
     });
     const data = await response.json();
