@@ -359,7 +359,7 @@ class TitleMetadataTests(unittest.TestCase):
             "The Loner (2026)",
         )
 
-    def test_resolution_from_meta_is_included(self):
+    def test_resolution_from_meta_is_ignored(self):
         self.assertEqual(
             app_module.title_from_meta(
                 {
@@ -368,7 +368,7 @@ class TitleMetadataTests(unittest.TestCase):
                     "resolution": "1080p",
                 }
             ),
-            "The Odyssey (2026) 1080p",
+            "The Odyssey (2026)",
         )
 
     def test_parse_command_uses_title_override(self):
@@ -416,8 +416,7 @@ class SettingsAndQueueTests(unittest.TestCase):
                     loaded, {"uploader_tag": "YTS", "resolution_tag": False}
                 )
 
-    def test_tags_are_appended_to_save_name(self):
-        manifest = """<?xml version="1.0"?><MPD><Period id="p0"><AdaptationSet contentType="video"><Representation width="1920" height="1080"/></AdaptationSet></Period></MPD>"""
+    def test_uploader_tag_is_appended_to_save_name(self):
         command = 'N_m3u8DL-RE.exe "https://example.com/index.mpd"'
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / ".settings.json"
@@ -427,14 +426,14 @@ class SettingsAndQueueTests(unittest.TestCase):
             )
             with (
                 mock.patch.object(app_module, "SETTINGS_FILE", path),
-                mock.patch.object(app_module, "fetch_manifest_text", return_value=manifest),
+                mock.patch.object(app_module, "fetch_manifest_text", return_value=None),
                 mock.patch.object(app_module, "detect_vod_drop_parts", return_value=None),
             ):
                 argv = app_module.parse_command(
                     command, title_override="The Odyssey (2026)"
                 )
         self.assertEqual(
-            argv[argv.index("--save-name") + 1], "The Odyssey (2026) 1080p YTS"
+            argv[argv.index("--save-name") + 1], "The Odyssey (2026) YTS"
         )
 
     def test_queue_job_is_not_started(self):
@@ -486,6 +485,61 @@ class SettingsAndQueueTests(unittest.TestCase):
             )
             client.delete("/api/jobs")
             self.assertIn(response.get_json()["id"], app_module._jobs)
+
+
+class EffectiveResolutionTests(unittest.TestCase):
+    def test_strip_name_tags(self):
+        self.assertEqual(
+            app_module.strip_name_tags("The Odyssey (2026) YTS", ["YTS"]),
+            "The Odyssey (2026)",
+        )
+
+    def test_apply_effective_resolution_renames_output(self):
+        directory = Path(tempfile.mkdtemp(dir=app_module.DOWNLOAD_DIR))
+        settings_dir = Path(tempfile.mkdtemp(dir=app_module.DOWNLOAD_DIR))
+        self.addCleanup(shutil.rmtree, directory, True)
+        self.addCleanup(shutil.rmtree, settings_dir, True)
+        settings_path = settings_dir / ".settings.json"
+        settings_path.write_text(
+            json.dumps({"uploader_tag": "YTS", "resolution_tag": True}),
+            encoding="utf-8",
+        )
+        old_name = "The Odyssey (2026) YTS"
+        output_dir = directory / old_name
+        output_dir.mkdir()
+        (output_dir / f"{old_name}.mkv").write_bytes(b"fake")
+        argv = ["N_m3u8DL-RE", "--save-dir", str(output_dir), "--save-name", old_name]
+        with (
+            mock.patch.object(app_module, "SETTINGS_FILE", settings_path),
+            mock.patch.object(app_module, "probe_video_resolution", return_value="720p"),
+        ):
+            job = app_module.Job("command", argv)
+            self.addCleanup(job.close_log)
+            job.started = app_module.time.time()
+            result = app_module.apply_effective_resolution(job)
+        new_name = "The Odyssey (2026) 720p YTS"
+        self.assertEqual(result, new_name)
+        self.assertEqual(job.title, new_name)
+        self.assertTrue((directory / new_name / f"{new_name}.mkv").exists())
+
+    def test_apply_effective_resolution_skips_when_disabled(self):
+        directory = Path(tempfile.mkdtemp(dir=app_module.DOWNLOAD_DIR))
+        settings_dir = Path(tempfile.mkdtemp(dir=app_module.DOWNLOAD_DIR))
+        self.addCleanup(shutil.rmtree, directory, True)
+        self.addCleanup(shutil.rmtree, settings_dir, True)
+        settings_path = settings_dir / ".settings.json"
+        settings_path.write_text(
+            json.dumps({"uploader_tag": "YTS", "resolution_tag": False}),
+            encoding="utf-8",
+        )
+        old_name = "The Odyssey (2026) YTS"
+        (directory / f"{old_name}.mkv").write_bytes(b"fake")
+        argv = ["N_m3u8DL-RE", "--save-dir", str(directory), "--save-name", old_name]
+        with mock.patch.object(app_module, "SETTINGS_FILE", settings_path):
+            job = app_module.Job("command", argv)
+            result = app_module.apply_effective_resolution(job)
+        self.assertIsNone(result)
+        self.assertTrue((directory / f"{old_name}.mkv").exists())
 
 
 if __name__ == "__main__":

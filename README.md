@@ -39,7 +39,7 @@ Files are stored in the folder you mount at `/downloads`.
 4. The homepage keeps the selected streams listed under each task and shows progress for the active stream only. A completed stream stays at 100% until the next stream starts. Overall progress is averaged over all selected streams and never moves backwards. Use **Log ↗** on a task to open the detailed live log when you want it.
 5. The log page shows the selected streams and compact progress per stream. Per-segment and stream status lines (merging, decrypting, processing completed, finalizing) are filtered out to keep memory use low.
 6. Under **Files** you can find, download or delete finished `.mkv` files.
-7. Use **Options** to set an uploader tag and to enable or disable automatic resolution tags. Extension titles become `Title (year) 1080p Uploader` or `Series S01E03 1080p Uploader`. The resolution is read from the DASH manifest when available, or from the playing video when the extension provides it.
+7. Use **Options** to set an uploader tag and to enable or disable automatic resolution tags. Extension titles become `Title (year) 1080p Uploader` or `Series S01E03 1080p Uploader`. The resolution is measured from the downloaded file with `ffprobe` after completion, so the final name always matches the effective downloaded resolution.
 8. Use **Queue** to add a job without starting it. Queued jobs appear in both the queue list and the task list; **Start queue** launches as many queued jobs as `MAX_CONCURRENT` allows.
 
 Active jobs live in the container memory. Finished jobs and their filtered logs are saved under `/downloads/.logs`, so a log can be reopened after the download finishes and even after a container restart. **Clear history** also deletes those saved logs. Files remain on disk as long as the `/downloads` mount is correct.
@@ -63,8 +63,8 @@ For the browser extension, set the server URL to the address you use to open the
 
 The modified extension is included in `extension/`:
 
-- `WidevineProxy2-1.2.7.crx` — drag this file onto `chrome://extensions` with Developer mode enabled.
-- `WidevineProxy2-1.2.7.zip` — unpack it, then use **Load unpacked** and select the `src` folder.
+- `WidevineProxy2-1.2.8.crx` — drag this file onto `chrome://extensions` with Developer mode enabled.
+- `WidevineProxy2-1.2.8.zip` — unpack it, then use **Load unpacked** and select the `src` folder.
 
 The source files are in `extension/src`. The server URL and token are not hardcoded; open the extension options and enter them yourself.
 

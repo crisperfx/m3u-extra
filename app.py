@@ -19,6 +19,11 @@ APP_DIR = Path(__file__).resolve().parent
 DOWNLOAD_DIR = Path(os.environ.get("DOWNLOAD_DIR", "/downloads")).resolve()
 NDL_BINARY = os.environ.get("NDL_BINARY", "/usr/local/bin/N_m3u8DL-RE")
 FFMPEG_BINARY = os.environ.get("FFMPEG_BINARY") or shutil.which("ffmpeg") or "ffmpeg"
+FFPROBE_BINARY = (
+    os.environ.get("FFPROBE_BINARY")
+    or shutil.which("ffprobe")
+    or str(Path(FFMPEG_BINARY).with_name("ffprobe"))
+)
 MP4DECRYPT_BINARY = os.environ.get("MP4DECRYPT_BINARY", "/usr/local/bin/mp4decrypt")
 PORT = int(os.environ.get("PORT", "8000"))
 MAX_CONCURRENT = int(os.environ.get("MAX_CONCURRENT", "3"))
@@ -33,6 +38,8 @@ SETTINGS_FILE = Path(os.environ.get("SETTINGS_FILE", str(DOWNLOAD_DIR / ".settin
 DEFAULT_SETTINGS = {"uploader_tag": "", "resolution_tag": True}
 JOB_ID_PATTERN = re.compile(r"^[0-9a-f]{12}$")
 SUBTITLE_FILTER_ZZZ = re.compile(r"^subtitle_language\s*:\s*zzz$", re.I)
+RESOLUTION_TAG_PATTERN = re.compile(r"(?<!\S)\d{3,4}p(?!\S)", re.I)
+VIDEO_SUFFIXES = {".mkv", ".mp4", ".mov", ".webm", ".m4v", ".ts"}
 
 
 def log_file_path(job_id):
@@ -277,14 +284,12 @@ def title_from_meta(meta):
         episode = int(meta.get("episode"))
     except (TypeError, ValueError):
         season = episode = None
-    resolution = clean_tag(meta.get("resolution"))
-    suffix = f" {resolution}" if re.fullmatch(r"\d{3,4}p", resolution, re.I) else ""
     if season and episode:
-        return f"{title} S{season:02d}E{episode:02d}{suffix}"
+        return f"{title} S{season:02d}E{episode:02d}"
     year = year_match.group(0) if year_match else ""
     if year and not re.search(rf"\b{re.escape(year)}\b", title):
-        return f"{title} ({year}){suffix}"
-    return f"{title}{suffix}"
+        return f"{title} ({year})"
+    return title
 
 
 def append_name_tags(name, tags):
@@ -298,6 +303,127 @@ def append_name_tags(name, tags):
             parts.append(cleaned)
             lowered = " ".join(parts).lower()
     return " ".join(parts)
+
+
+def option_value(argv, option):
+    for index, token in enumerate(argv):
+        if token == option and index + 1 < len(argv):
+            return argv[index + 1]
+        if token.startswith(option + "="):
+            return token[len(option) + 1 :]
+    return None
+
+
+def strip_name_tags(name, tags):
+    result = str(name or "")
+    for tag in tags:
+        cleaned = clean_tag(tag)
+        if cleaned:
+            result = re.sub(
+                rf"(?<!\S){re.escape(cleaned)}(?!\S)", "", result, flags=re.I
+            )
+    return re.sub(r"\s+", " ", result).strip()
+
+
+def probe_video_resolution(path):
+    binary = shutil.which(str(FFPROBE_BINARY)) if FFPROBE_BINARY else None
+    if not binary or not Path(binary).exists():
+        return None
+    try:
+        result = subprocess.run(
+            [
+                binary,
+                "-v",
+                "error",
+                "-select_streams",
+                "v:0",
+                "-show_entries",
+                "stream=height",
+                "-of",
+                "default=noprint_wrappers=1:nokey=1",
+                str(path),
+            ],
+            capture_output=True,
+            text=True,
+            timeout=20,
+            check=False,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return None
+    heights = []
+    for line in result.stdout.splitlines():
+        match = re.fullmatch(r"\s*(\d{3,4})\s*", line)
+        if match:
+            heights.append(int(match.group(1)))
+    return f"{max(heights)}p" if heights else None
+
+
+def find_output_video(job):
+    directory = job.save_dir
+    if not directory or not directory.is_dir():
+        return None
+    files = [
+        path
+        for path in directory.rglob("*")
+        if path.is_file()
+        and path.suffix.lower() in VIDEO_SUFFIXES
+        and path.stat().st_mtime >= (job.started or 0) - 2
+    ]
+    if not files:
+        files = [
+            path
+            for path in directory.rglob("*")
+            if path.is_file() and path.suffix.lower() in VIDEO_SUFFIXES
+        ]
+    return max(files, key=lambda path: path.stat().st_mtime) if files else None
+
+
+def apply_effective_resolution(job):
+    if not job.resolution_tag:
+        return None
+    video = find_output_video(job)
+    if video is None:
+        return None
+    resolution = probe_video_resolution(video)
+    if not resolution:
+        return None
+    settings = load_settings()
+    uploader = clean_tag(settings.get("uploader_tag"))
+    old_name = job.save_name or video.stem
+    base_name = strip_name_tags(old_name, [resolution, uploader])
+    new_name = append_name_tags(base_name, [resolution, uploader])
+    if not new_name or new_name == old_name:
+        return None
+    directory = video.parent
+    renamed = False
+    for path in sorted(directory.iterdir()):
+        if not path.is_file():
+            continue
+        if path.name == old_name or path.name.startswith(old_name + "."):
+            target = path.with_name(new_name + path.name[len(old_name) :])
+            if target == path or target.exists():
+                continue
+            try:
+                path.rename(target)
+                renamed = True
+            except OSError:
+                pass
+    if not renamed:
+        return None
+    if directory.name == safe_name(old_name, limit=80):
+        target_dir = directory.with_name(safe_name(new_name, limit=80))
+        if not target_dir.exists():
+            try:
+                directory.rename(target_dir)
+                job.save_dir = target_dir
+            except OSError:
+                pass
+    job.save_name = new_name
+    job.title = new_name
+    message = f"[webserver] Bestandsnaam bijgewerkt naar {new_name}\n"
+    job.append_log(message)
+    job.output.put(("log", message))
+    return new_name
 
 
 def extract_title(argv):
@@ -811,10 +937,6 @@ def parse_command(raw, title_override=None):
     )
     settings = load_settings()
     tags = []
-    if settings["resolution_tag"]:
-        resolution = detect_manifest_resolution(args)
-        if resolution:
-            tags.append(resolution)
     if settings["uploader_tag"]:
         tags.append(settings["uploader_tag"])
     save_name = append_name_tags(save_name, tags)
@@ -846,6 +968,12 @@ class Job:
         self.command = command
         self.title = extract_title(argv)
         self.argv = argv
+        self.resolution_tag = bool(load_settings().get("resolution_tag"))
+        try:
+            self.save_dir = safe_dir(option_value(argv, "--save-dir"))
+        except ValueError:
+            self.save_dir = DOWNLOAD_DIR
+        self.save_name = option_value(argv, "--save-name")
         self.output = queue.Queue()
         self.streams = StreamCollector()
         self.progress_streams = {"video": [], "audio": [], "subtitle": []}
@@ -1054,6 +1182,13 @@ class Job:
                         self.append_log(filtered)
                         self.output.put(("log", filtered))
             self.returncode = self.proc.wait()
+            if self.returncode == 0 and self.status != "cancelled":
+                try:
+                    apply_effective_resolution(self)
+                except Exception as exc:
+                    message = f"[webserver] resolutie-tag niet toegepast: {exc}\n"
+                    self.append_log(message)
+                    self.output.put(("log", message))
             with _jobs_lock:
                 if self.status != "cancelled":
                     self.status = "done" if self.returncode == 0 else "failed"
