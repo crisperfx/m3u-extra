@@ -64,7 +64,7 @@ For the browser extension, set the server URL to the address you use to open the
 The modified extension is included in `extension/`:
 
 - `WidevineProxy2-1.2.8.crx` — drag this file onto `chrome://extensions` with Developer mode enabled.
-- `WidevineProxy2-1.2.8.zip` — unpack it, then use **Load unpacked** and select the `src` folder.
+- `WidevineProxy2-1.2.8.zip` — unpack it, then use **Load unpacked** and select the extracted folder (the one containing `manifest.json`).
 
 The source files are in `extension/src`. The server URL and token are not hardcoded; open the extension options and enter them yourself.
 
