@@ -561,6 +561,58 @@ class SettingsAndQueueTests(unittest.TestCase):
             self.assertIn(response.get_json()["id"], app_module._jobs)
 
 
+class QueueDrainingTests(unittest.TestCase):
+    class FakeJob:
+        def __init__(self, status):
+            self.status = status
+            self.phase = status
+            self.launch = mock.Mock()
+
+    def test_queue_keeps_filling_free_slots(self):
+        running = self.FakeJob("running")
+        first = self.FakeJob("queued")
+        second = self.FakeJob("queued")
+        third = self.FakeJob("queued")
+        with (
+            mock.patch.object(
+                app_module,
+                "_jobs",
+                {"running": running, "first": first, "second": second, "third": third},
+            ),
+            mock.patch.object(app_module, "_queue_pump_active", True),
+            mock.patch.object(app_module, "MAX_CONCURRENT", 2),
+        ):
+            started, remaining = app_module.pump_queue_once()
+            self.assertEqual(started, 1)
+            self.assertEqual(remaining, 2)
+            first.launch.assert_called_once()
+            running.status = "done"
+
+            started, remaining = app_module.pump_queue_once()
+            self.assertEqual(started, 1)
+            self.assertEqual(remaining, 1)
+            second.launch.assert_called_once()
+            first.status = "done"
+
+            started, remaining = app_module.pump_queue_once()
+            self.assertEqual(started, 1)
+            self.assertEqual(remaining, 0)
+            third.launch.assert_called_once()
+            self.assertFalse(app_module._queue_pump_active)
+
+    def test_queue_pump_is_inactive_without_start(self):
+        first = self.FakeJob("queued")
+        with (
+            mock.patch.object(app_module, "_jobs", {"first": first}),
+            mock.patch.object(app_module, "_queue_pump_active", False),
+            mock.patch.object(app_module, "MAX_CONCURRENT", 3),
+        ):
+            started, remaining = app_module.pump_queue_once()
+        self.assertEqual(started, 0)
+        self.assertEqual(remaining, 1)
+        first.launch.assert_not_called()
+
+
 class EffectiveResolutionTests(unittest.TestCase):
     def test_strip_name_tags(self):
         self.assertEqual(

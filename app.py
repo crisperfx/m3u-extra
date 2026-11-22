@@ -133,6 +133,8 @@ app.config["MAX_CONTENT_LENGTH"] = 512 * 1024
 _jobs = {}
 _jobs_lock = threading.Lock()
 _settings_lock = threading.Lock()
+_queue_pump_lock = threading.Lock()
+_queue_pump_active = False
 
 BINARY_NAMES = {"N_m3u8DL-RE", "N_m3u8DL-RE.exe"}
 PHASE_PATTERNS = (
@@ -1226,6 +1228,7 @@ class Job:
             self.close_log()
             write_archived_info(self)
             self.output.put(("end", None))
+            pump_queue_once()
 
     def cancel(self):
         with _jobs_lock:
@@ -1244,6 +1247,7 @@ class Job:
             except subprocess.TimeoutExpired:
                 self.proc.kill()
         self.output.put(("end", None))
+        pump_queue_once()
         return True
 
 
@@ -1462,23 +1466,43 @@ def job_stream(job_id):
     )
 
 
-@app.post("/api/jobs/queue/start")
-def start_queue():
+def pump_queue_once():
+    global _queue_pump_active
     to_start = []
-    with _jobs_lock:
-        active = sum(1 for item in _jobs.values() if item.status == "running")
-        for job in _jobs.values():
-            if active >= MAX_CONCURRENT:
-                break
-            if job.status == "queued":
-                job.status = "running"
-                job.phase = "initialisieren"
-                active += 1
-                to_start.append(job)
-        remaining = sum(1 for item in _jobs.values() if item.status == "queued")
+    with _queue_pump_lock:
+        if not _queue_pump_active:
+            with _jobs_lock:
+                remaining = sum(
+                    1 for item in _jobs.values() if item.status == "queued"
+                )
+            return 0, remaining
+        with _jobs_lock:
+            active = sum(1 for item in _jobs.values() if item.status == "running")
+            capacity = MAX_CONCURRENT - active
+            if capacity > 0:
+                for job in _jobs.values():
+                    if capacity <= 0:
+                        break
+                    if job.status == "queued":
+                        job.status = "running"
+                        job.phase = "initialisieren"
+                        capacity -= 1
+                        to_start.append(job)
+            remaining = sum(1 for item in _jobs.values() if item.status == "queued")
+            if remaining == 0:
+                _queue_pump_active = False
     for job in to_start:
         job.launch()
-    return jsonify({"started": len(to_start), "remaining": remaining})
+    return len(to_start), remaining
+
+
+@app.post("/api/jobs/queue/start")
+def start_queue():
+    global _queue_pump_active
+    with _queue_pump_lock:
+        _queue_pump_active = True
+    started, remaining = pump_queue_once()
+    return jsonify({"started": started, "remaining": remaining})
 
 
 @app.post("/api/jobs/<job_id>/cancel")

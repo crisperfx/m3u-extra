@@ -40,7 +40,7 @@ Files are stored in the folder you mount at `/downloads`.
 5. The log page shows the selected streams and compact progress per stream. Per-segment and stream status lines (merging, decrypting, processing completed, finalizing) are filtered out to keep memory use low.
 6. Under **Files** you can find, download or delete finished `.mkv` files.
 7. Use **Options** to set an uploader tag and to enable or disable automatic resolution tags. Extension titles become `Title (year) 1080p Uploader` or `Series S01E03 1080p Uploader`. The resolution is measured from the downloaded file with `ffprobe` after completion, so the final name always matches the effective downloaded resolution.
-8. Use **Queue** to add a job without starting it. Queued jobs appear in both the queue list and the task list; **Start queue** launches as many queued jobs as `MAX_CONCURRENT` allows.
+8. Use **Queue** to add a job without starting it. Queued jobs appear in both the queue list and the task list; **Start queue** fills the available slots up to `MAX_CONCURRENT` and keeps starting the next queued job whenever a slot frees, until the queue is empty.
 9. In **Options**, turn off **Start downloads immediately** to pause new submissions globally. They are queued instead of starting; **Start queue** remains the manual override.
 
 Active jobs live in the container memory. Finished jobs and their filtered logs are saved under `/downloads/.logs`, so a log can be reopened after the download finishes and even after a container restart. Settings live in `/settings/settings.json`, outside the downloads mount. **Clear history** deletes the saved logs but never the settings. Files remain on disk as long as the `/downloads` mount is correct.
