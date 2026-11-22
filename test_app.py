@@ -1,8 +1,10 @@
 import atexit
+import json
 import os
 import shutil
 import tempfile
 import unittest
+from pathlib import Path
 from unittest import mock
 
 _TEST_DOWNLOAD_DIR = tempfile.mkdtemp(prefix="m3u-extra-test-")
@@ -340,6 +342,150 @@ class AdFilterTests(unittest.TestCase):
             argv = app_module.parse_command(command)
         self.assertNotIn("aws.manifestfilter", argv[1])
         self.assertIn("foo=bar", argv[1])
+
+
+class TitleMetadataTests(unittest.TestCase):
+    def test_series_title_from_meta(self):
+        self.assertEqual(
+            app_module.title_from_meta(
+                {"title": "Omerta", "season": "1", "episode": 3}
+            ),
+            "Omerta S01E03",
+        )
+
+    def test_movie_title_from_meta(self):
+        self.assertEqual(
+            app_module.title_from_meta({"title": "The Loner", "year": "2026"}),
+            "The Loner (2026)",
+        )
+
+    def test_resolution_from_meta_is_included(self):
+        self.assertEqual(
+            app_module.title_from_meta(
+                {
+                    "title": "The Odyssey",
+                    "year": "2026",
+                    "resolution": "1080p",
+                }
+            ),
+            "The Odyssey (2026) 1080p",
+        )
+
+    def test_parse_command_uses_title_override(self):
+        command = (
+            'N_m3u8DL-RE.exe "https://example.com/index.mpd" '
+            '--save-name "Omerta S1 A3 Hiep hiep hoera - Online kijken - Streamz"'
+        )
+        with mock.patch.object(app_module, "fetch_manifest_text", return_value=None):
+            argv = app_module.parse_command(command, title_override="Omerta S01E03")
+        self.assertEqual(argv[argv.index("--save-name") + 1], "Omerta S01E03")
+
+    def test_extension_submit_applies_meta(self):
+        with (
+            mock.patch.object(app_module, "EXT_TOKEN", "token"),
+            mock.patch.object(app_module, "fetch_manifest_text", return_value=None),
+            mock.patch.object(app_module, "enqueue_job") as enqueue,
+        ):
+            enqueue.return_value.id = "abc"
+            response = app_module.app.test_client().post(
+                "/api/extension/submit",
+                json={
+                    "token": "token",
+                    "command": 'N_m3u8DL-RE.exe "https://example.com/index.mpd"',
+                    "meta": {"title": "The Loner", "year": "2026"},
+                },
+            )
+        self.assertEqual(response.status_code, 201)
+        argv = enqueue.call_args.args[1]
+        self.assertEqual(argv[argv.index("--save-name") + 1], "The Loner (2026)")
+
+
+class SettingsAndQueueTests(unittest.TestCase):
+    def test_settings_endpoints(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / ".settings.json"
+            with mock.patch.object(app_module, "SETTINGS_FILE", path):
+                client = app_module.app.test_client()
+                saved = client.post(
+                    "/api/settings",
+                    json={"uploader_tag": "YTS", "resolution_tag": False},
+                )
+                self.assertEqual(saved.status_code, 200)
+                loaded = client.get("/api/settings").get_json()
+                self.assertEqual(
+                    loaded, {"uploader_tag": "YTS", "resolution_tag": False}
+                )
+
+    def test_tags_are_appended_to_save_name(self):
+        manifest = """<?xml version="1.0"?><MPD><Period id="p0"><AdaptationSet contentType="video"><Representation width="1920" height="1080"/></AdaptationSet></Period></MPD>"""
+        command = 'N_m3u8DL-RE.exe "https://example.com/index.mpd"'
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / ".settings.json"
+            path.write_text(
+                json.dumps({"uploader_tag": "YTS", "resolution_tag": True}),
+                encoding="utf-8",
+            )
+            with (
+                mock.patch.object(app_module, "SETTINGS_FILE", path),
+                mock.patch.object(app_module, "fetch_manifest_text", return_value=manifest),
+                mock.patch.object(app_module, "detect_vod_drop_parts", return_value=None),
+            ):
+                argv = app_module.parse_command(
+                    command, title_override="The Odyssey (2026)"
+                )
+        self.assertEqual(
+            argv[argv.index("--save-name") + 1], "The Odyssey (2026) 1080p YTS"
+        )
+
+    def test_queue_job_is_not_started(self):
+        with (
+            mock.patch.object(app_module, "_jobs", {}),
+            mock.patch.object(app_module, "fetch_manifest_text", return_value=None),
+        ):
+            response = app_module.app.test_client().post(
+                "/api/jobs",
+                json={
+                    "command": 'N_m3u8DL-RE.exe "https://example.com/index.mpd"',
+                    "queue": True,
+                },
+            )
+            self.assertEqual(response.status_code, 201)
+            job = app_module._jobs[response.get_json()["id"]]
+            self.assertEqual(job.status, "queued")
+
+    def test_start_queue_launches_queued_jobs(self):
+        with (
+            mock.patch.object(app_module, "_jobs", {}),
+            mock.patch.object(app_module, "fetch_manifest_text", return_value=None),
+            mock.patch.object(app_module.Job, "launch") as launch,
+        ):
+            client = app_module.app.test_client()
+            client.post(
+                "/api/jobs",
+                json={
+                    "command": 'N_m3u8DL-RE.exe "https://example.com/index.mpd"',
+                    "queue": True,
+                },
+            )
+            response = client.post("/api/jobs/queue/start")
+            self.assertEqual(response.get_json()["started"], 1)
+            launch.assert_called_once()
+
+    def test_clear_history_preserves_queued_jobs(self):
+        with (
+            mock.patch.object(app_module, "_jobs", {}),
+            mock.patch.object(app_module, "fetch_manifest_text", return_value=None),
+        ):
+            client = app_module.app.test_client()
+            response = client.post(
+                "/api/jobs",
+                json={
+                    "command": 'N_m3u8DL-RE.exe "https://example.com/index.mpd"',
+                    "queue": True,
+                },
+            )
+            client.delete("/api/jobs")
+            self.assertIn(response.get_json()["id"], app_module._jobs)
 
 
 if __name__ == "__main__":

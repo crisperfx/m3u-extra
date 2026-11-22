@@ -1,11 +1,16 @@
 const commandEl = document.getElementById('command');
 const startBtn = document.getElementById('start');
+const queueBtn = document.getElementById('queueJob');
+const startQueueBtn = document.getElementById('startQueue');
 const stopBtn = document.getElementById('stop');
 const clearBtn = document.getElementById('clear');
 const openLogBtn = document.getElementById('openLog');
 const errorEl = document.getElementById('error');
 const healthEl = document.getElementById('health');
 const jobsEl = document.getElementById('jobs');
+const queueEl = document.getElementById('queue');
+const queuePanel = document.getElementById('queuePanel');
+const queueCount = document.getElementById('queue-count');
 const filesEl = document.getElementById('files');
 const fileCount = document.getElementById('file-count');
 const refreshFilesBtn = document.getElementById('refreshFiles');
@@ -26,6 +31,7 @@ function phaseLabel(job) {
 
 function statusClass(job) {
   if (!job) return '';
+  if (job.status === 'queued') return 'warn';
   if (job.status === 'running') return job.phase === 'muxing' || job.phase === 'decrypting' ? 'warn' : 'active';
   if (job.status === 'done') return 'ok';
   if (job.status === 'failed') return 'err';
@@ -109,12 +115,14 @@ function renderJobs(jobs) {
 
     const actions = document.createElement('div');
     actions.className = 'job-actions';
-    const logBtn = document.createElement('button');
-    logBtn.className = 'btn tiny';
-    logBtn.textContent = T('action.log');
-    logBtn.onclick = () => window.open(`/log/${job.id}`, '_blank');
-    actions.append(logBtn);
-    if (job.status === 'running') {
+    if (job.status !== 'queued') {
+      const logBtn = document.createElement('button');
+      logBtn.className = 'btn tiny';
+      logBtn.textContent = T('action.log');
+      logBtn.onclick = () => window.open(`/log/${job.id}`, '_blank');
+      actions.append(logBtn);
+    }
+    if (job.status === 'running' || job.status === 'queued') {
       const stopJobBtn = document.createElement('button');
       stopJobBtn.className = 'btn tiny danger';
       stopJobBtn.textContent = T('action.stop');
@@ -131,6 +139,22 @@ function renderJobs(jobs) {
     const activeBlock = window.renderActiveStream ? window.renderActiveStream(job) : null;
     if (activeBlock) li.append(activeBlock);
     jobsEl.append(li);
+  }
+}
+
+function renderQueue(jobs) {
+  const queued = jobs.filter(job => job.status === 'queued');
+  queuePanel.hidden = queued.length === 0;
+  queueCount.textContent = queued.length ? `(${queued.length})` : '';
+  queueEl.innerHTML = '';
+  for (const job of queued) {
+    const li = document.createElement('li');
+    const title = document.createElement('span');
+    title.className = 'queue-title';
+    title.textContent = job.title || job.command;
+    title.title = job.command;
+    li.append(title);
+    queueEl.append(li);
   }
 }
 
@@ -172,6 +196,7 @@ async function refreshJobs() {
   try {
     const jobs = await api('/api/jobs');
     renderJobs(jobs);
+    renderQueue(jobs);
     setActiveJob(jobs.find(job => job.status === 'running') || null);
   } catch (e) {
     showError(e.message);
@@ -183,17 +208,18 @@ async function refreshFiles() {
   catch (e) { showError(e.message); }
 }
 
-startBtn.onclick = async () => {
+async function submitJob(queue) {
   showError('');
   const command = commandEl.value.trim();
   if (!command) { showError(T('error.pasteCommand')); return; }
   const isMobile = window.matchMedia('(max-width: 720px)').matches;
   startBtn.disabled = true;
+  queueBtn.disabled = true;
   try {
     await api('/api/jobs', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ command })
+      body: JSON.stringify({ command, queue })
     });
     await refreshJobs();
     if (isMobile) jobsEl.scrollIntoView({ behavior: 'smooth', block: 'start' });
@@ -201,6 +227,22 @@ startBtn.onclick = async () => {
     showError(e.message);
   } finally {
     startBtn.disabled = false;
+    queueBtn.disabled = false;
+  }
+}
+
+startBtn.onclick = () => submitJob(false);
+queueBtn.onclick = () => submitJob(true);
+
+startQueueBtn.onclick = async () => {
+  startQueueBtn.disabled = true;
+  try {
+    await api('/api/jobs/queue/start', { method: 'POST' });
+    await refreshJobs();
+  } catch (e) {
+    showError(e.message);
+  } finally {
+    startQueueBtn.disabled = false;
   }
 };
 

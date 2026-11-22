@@ -21,6 +21,7 @@
       </div>
     </div>
     <div class="topbar-actions">
+      <a class="btn subtle top-link" href="/options" data-i18n="action.options">Opties</a>
       <button type="button" id="language" class="lang-select" data-i18n-aria-label="language.label" aria-label="Taal">NL</button>
       <div id="health" class="chip" data-i18n="health.connecting">verbinden...</div>
     </div>
@@ -38,6 +39,7 @@
       <textarea id="command" spellcheck="false" data-i18n-placeholder="command.placeholder" placeholder='N_m3u8DL-RE.exe "https://.../index.mpd" --save-name "Naam" -H "Referer: https://..." --key KID:KEY -M format=mkv'></textarea>
       <div class="toolbar">
         <button id="start" class="btn primary" data-i18n="action.start">Start download</button>
+        <button id="queueJob" class="btn subtle" data-i18n="action.queue">In wachtrij</button>
         <button id="openLog" class="btn subtle" disabled data-i18n="action.openLog">Open live log ↗</button>
         <button id="stop" class="btn danger" disabled data-i18n="action.stop">Stop</button>
       </div>
@@ -46,6 +48,17 @@
         <summary data-i18n="hint.title">Hoe werkt dit?</summary>
         <p data-i18n-html="hint.body">Plak het volledige commando. <code>N_m3u8DL-RE.exe</code> wordt automatisch door de Linux-versie vervangen. Bestanden komen in <code>/downloads/&lt;titel&gt;/</code> terecht. Gebruik <strong>Log ↗</strong> om het live logboek te openen; taken die via de extensie starten verschijnen hier vanzelf.</p>
       </details>
+    </section>
+
+    <section class="panel queue-panel" id="queuePanel" hidden>
+      <div class="panel-head">
+        <div>
+          <span class="eyebrow" data-i18n="panel.queueHint">Wachtend</span>
+          <h2><span data-i18n="panel.queue">Wachtrij</span> <span id="queue-count" class="count"></span></h2>
+        </div>
+        <button id="startQueue" class="btn primary" data-i18n="action.startQueue">Wachtrij starten</button>
+      </div>
+      <ul id="queue" class="list compact-list"></ul>
     </section>
 
     <div class="columns">

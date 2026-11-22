@@ -29,6 +29,8 @@ EXT_TOKEN = os.environ.get("EXT_TOKEN", "")
 DOWNLOAD_DIR.mkdir(parents=True, exist_ok=True)
 LOG_DIR = Path(os.environ.get("LOG_DIR", str(DOWNLOAD_DIR / ".logs"))).resolve()
 LOG_DIR.mkdir(parents=True, exist_ok=True)
+SETTINGS_FILE = Path(os.environ.get("SETTINGS_FILE", str(DOWNLOAD_DIR / ".settings.json")))
+DEFAULT_SETTINGS = {"uploader_tag": "", "resolution_tag": True}
 JOB_ID_PATTERN = re.compile(r"^[0-9a-f]{12}$")
 SUBTITLE_FILTER_ZZZ = re.compile(r"^subtitle_language\s*:\s*zzz$", re.I)
 
@@ -65,11 +67,45 @@ def write_archived_info(job):
         pass
 
 
+def clean_tag(value, limit=40):
+    text = str(value or "").replace("\x00", "")
+    text = re.sub(r'[<>:"/\\|?*\x00-\x1f]+', "", text)
+    return re.sub(r"\s+", " ", text).strip()[:limit]
+
+
+def load_settings():
+    settings = dict(DEFAULT_SETTINGS)
+    try:
+        data = json.loads(SETTINGS_FILE.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return settings
+    if not isinstance(data, dict):
+        return settings
+    settings["uploader_tag"] = clean_tag(data.get("uploader_tag"))
+    settings["resolution_tag"] = bool(data.get("resolution_tag", True))
+    return settings
+
+
+def save_settings(data):
+    current = load_settings()
+    if isinstance(data, dict):
+        if "uploader_tag" in data:
+            current["uploader_tag"] = clean_tag(data.get("uploader_tag"))
+        if "resolution_tag" in data:
+            current["resolution_tag"] = bool(data.get("resolution_tag"))
+    with _settings_lock:
+        SETTINGS_FILE.write_text(
+            json.dumps(current, ensure_ascii=False, indent=2), encoding="utf-8"
+        )
+    return current
+
+
 app = Flask(__name__)
 app.config["MAX_CONTENT_LENGTH"] = 512 * 1024
 
 _jobs = {}
 _jobs_lock = threading.Lock()
+_settings_lock = threading.Lock()
 
 BINARY_NAMES = {"N_m3u8DL-RE", "N_m3u8DL-RE.exe"}
 PHASE_PATTERNS = (
@@ -227,6 +263,41 @@ def safe_name(value, limit=120):
     name = name.replace("\x00", "").strip()
     name = name[:limit].rstrip(" ._")
     return name or "download"
+
+
+def title_from_meta(meta):
+    if not isinstance(meta, dict):
+        return None
+    title = safe_name(meta.get("title"), limit=120)
+    if not title or title == "download":
+        return None
+    year_match = re.search(r"(?:19|20)\d{2}", str(meta.get("year") or ""))
+    try:
+        season = int(meta.get("season"))
+        episode = int(meta.get("episode"))
+    except (TypeError, ValueError):
+        season = episode = None
+    resolution = clean_tag(meta.get("resolution"))
+    suffix = f" {resolution}" if re.fullmatch(r"\d{3,4}p", resolution, re.I) else ""
+    if season and episode:
+        return f"{title} S{season:02d}E{episode:02d}{suffix}"
+    year = year_match.group(0) if year_match else ""
+    if year and not re.search(rf"\b{re.escape(year)}\b", title):
+        return f"{title} ({year}){suffix}"
+    return f"{title}{suffix}"
+
+
+def append_name_tags(name, tags):
+    if not name:
+        return name
+    parts = [name]
+    lowered = name.lower()
+    for tag in tags:
+        cleaned = clean_tag(tag)
+        if cleaned and cleaned.lower() not in lowered:
+            parts.append(cleaned)
+            lowered = " ".join(parts).lower()
+    return " ".join(parts)
 
 
 def extract_title(argv):
@@ -554,21 +625,69 @@ def sanitize_manifest_filters(tokens):
     return [cleaned if token == source else token for token in tokens]
 
 
+_manifest_cache = {}
+_manifest_cache_lock = threading.Lock()
+
+
 def fetch_manifest_text(url, headers):
     if not url.lower().startswith(("http://", "https://")):
         return None
+    key = (url, tuple(sorted((str(k), str(v)) for k, v in headers.items())))
+    now = time.time()
+    with _manifest_cache_lock:
+        cached = _manifest_cache.get(key)
+        if cached and now - cached[0] < 30:
+            return cached[1]
     request_headers = {"User-Agent": "Mozilla/5.0"}
     request_headers.update(headers)
+    text = None
     try:
         request = urllib.request.Request(url, headers=request_headers)
         with urllib.request.urlopen(request, timeout=10) as response:
-            return response.read(2_000_000).decode("utf-8", "replace")
+            text = response.read(2_000_000).decode("utf-8", "replace")
     except Exception:
         return None
+    with _manifest_cache_lock:
+        if len(_manifest_cache) > 50:
+            _manifest_cache.clear()
+        _manifest_cache[key] = (now, text)
+    return text
 
 
 def local_name(tag):
     return tag.rsplit("}", 1)[-1]
+
+
+def parse_manifest_resolution(text):
+    if not text:
+        return None
+    try:
+        root = ET.fromstring(text)
+    except ET.ParseError:
+        return None
+    heights = []
+    for element in root.iter():
+        if local_name(element.tag) not in (
+            "Representation",
+            "SubRepresentation",
+            "AdaptationSet",
+        ):
+            continue
+        height = element.get("height")
+        if height and height.isdigit():
+            heights.append(int(height))
+            continue
+        match = re.search(r"(\d{3,4})x(\d{3,4})", element.get("res", ""), re.I)
+        if match:
+            heights.append(int(match.group(2)))
+    return f"{max(heights)}p" if heights else None
+
+
+def detect_manifest_resolution(tokens):
+    source = find_manifest_input(tokens)
+    if not source:
+        return None
+    return parse_manifest_resolution(fetch_manifest_text(source, extract_headers(tokens)))
 
 
 def format_indices(indices):
@@ -653,7 +772,7 @@ def inject_dash_ad_filters(tokens):
     return result
 
 
-def parse_command(raw):
+def parse_command(raw, title_override=None):
     raw = raw.replace("\r\n", " ").replace("\n", " ").replace("\r", " ").strip()
     if not raw:
         raise ValueError("Plak eerst een commando")
@@ -686,7 +805,19 @@ def parse_command(raw):
     args = inject_dash_ad_filters(args)
 
     base_dir = safe_dir(save_dir_raw)
-    save_name = safe_name(save_name_raw) if save_name_raw is not None else None
+    override = safe_name(title_override, limit=120) if title_override else None
+    save_name = override or (
+        safe_name(save_name_raw) if save_name_raw is not None else None
+    )
+    settings = load_settings()
+    tags = []
+    if settings["resolution_tag"]:
+        resolution = detect_manifest_resolution(args)
+        if resolution:
+            tags.append(resolution)
+    if settings["uploader_tag"]:
+        tags.append(settings["uploader_tag"])
+    save_name = append_name_tags(save_name, tags)
     save_dir = base_dir / safe_name(save_name, limit=80) if save_name else base_dir
     save_dir.mkdir(parents=True, exist_ok=True)
 
@@ -721,8 +852,8 @@ class Job:
         self.active_stream = None
         self.log_filter = LogFilter()
         self.log_file = None
-        self.status = "running"
-        self.phase = "initialiseren"
+        self.status = "queued"
+        self.phase = "queued"
         self.progress = None
         self.aggregate_ready = False
         self.detail = ""
@@ -873,8 +1004,17 @@ class Job:
                 pass
             self.log_file = None
 
-    def start(self):
+    def launch(self):
         threading.Thread(target=self._run, daemon=True, name=f"job-{self.id}").start()
+
+    def start(self):
+        with _jobs_lock:
+            if self.status != "queued":
+                return False
+            self.status = "running"
+            self.phase = "initialiseren"
+        self.launch()
+        return True
 
     def _run(self):
         self.started = time.time()
@@ -997,6 +1137,21 @@ def log_page(job_id):
     return render_template("log.html", job_id=job_id)
 
 
+@app.get("/options")
+def options_page():
+    return render_template("options.html")
+
+
+@app.get("/api/settings")
+def get_settings():
+    return jsonify(load_settings())
+
+
+@app.post("/api/settings")
+def update_settings():
+    return jsonify(save_settings(request.get_json(silent=True) or {}))
+
+
 @app.get("/api/health")
 def health():
     return jsonify(
@@ -1009,14 +1164,19 @@ def health():
     )
 
 
-def enqueue_job(command, argv):
+def enqueue_job(command, argv, queue=False):
     with _jobs_lock:
-        active = sum(1 for item in _jobs.values() if item.status == "running")
-        if active >= MAX_CONCURRENT:
-            return None
+        if not queue:
+            active = sum(1 for item in _jobs.values() if item.status == "running")
+            if active >= MAX_CONCURRENT:
+                return None
         job = Job(command, argv)
+        if not queue:
+            job.status = "running"
+            job.phase = "initialiseren"
         _jobs[job.id] = job
-    job.start()
+    if not queue:
+        job.launch()
     return job
 
 
@@ -1024,12 +1184,13 @@ def enqueue_job(command, argv):
 def create_job():
     data = request.get_json(silent=True) or {}
     command = str(data.get("command", ""))
+    title_override = title_from_meta(data.get("meta"))
     try:
-        argv = parse_command(command)
+        argv = parse_command(command, title_override=title_override)
     except ValueError as exc:
         return jsonify({"error": str(exc)}), 400
 
-    job = enqueue_job(command, argv)
+    job = enqueue_job(command, argv, queue=bool(data.get("queue")))
     if job is None:
         return jsonify({"error": f"Maximaal {MAX_CONCURRENT} gelijktijdige taken"}), 429
     return jsonify(job.info()), 201
@@ -1043,12 +1204,13 @@ def extension_submit():
         return jsonify({"error": "Ongeldige token"}), 401
 
     command = str(data.get("command", ""))
+    title_override = title_from_meta(data.get("meta"))
     try:
-        argv = parse_command(command)
+        argv = parse_command(command, title_override=title_override)
     except ValueError as exc:
         return jsonify({"error": str(exc)}), 400
 
-    job = enqueue_job(command, argv)
+    job = enqueue_job(command, argv, queue=bool(data.get("queue")))
     if job is None:
         return jsonify({"error": f"Maximaal {MAX_CONCURRENT} gelijktijdige taken"}), 429
     return jsonify({"ok": True, "id": job.id}), 201
@@ -1073,12 +1235,14 @@ def clear_jobs():
     global _jobs
     with _jobs_lock:
         running_ids = {
-            job_id for job_id, job in _jobs.items() if job.status == "running"
+            job_id
+            for job_id, job in _jobs.items()
+            if job.status in ("running", "queued")
         }
         _jobs = {
             job_id: job
             for job_id, job in _jobs.items()
-            if job.status == "running"
+            if job.status in ("running", "queued")
         }
         stale_paths = [
             path
@@ -1137,6 +1301,25 @@ def job_stream(job_id):
         mimetype="text/event-stream",
         headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
     )
+
+
+@app.post("/api/jobs/queue/start")
+def start_queue():
+    to_start = []
+    with _jobs_lock:
+        active = sum(1 for item in _jobs.values() if item.status == "running")
+        for job in _jobs.values():
+            if active >= MAX_CONCURRENT:
+                break
+            if job.status == "queued":
+                job.status = "running"
+                job.phase = "initialisieren"
+                active += 1
+                to_start.append(job)
+        remaining = sum(1 for item in _jobs.values() if item.status == "queued")
+    for job in to_start:
+        job.launch()
+    return jsonify({"started": len(to_start), "remaining": remaining})
 
 
 @app.post("/api/jobs/<job_id>/cancel")

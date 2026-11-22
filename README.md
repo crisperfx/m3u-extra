@@ -39,6 +39,8 @@ Files are stored in the folder you mount at `/downloads`.
 4. The homepage keeps the selected streams listed under each task and shows progress for the active stream only. A completed stream stays at 100% until the next stream starts. Overall progress is averaged over all selected streams and never moves backwards. Use **Log ↗** on a task to open the detailed live log when you want it.
 5. The log page shows the selected streams and compact progress per stream. Per-segment and stream status lines (merging, decrypting, processing completed, finalizing) are filtered out to keep memory use low.
 6. Under **Files** you can find, download or delete finished `.mkv` files.
+7. Use **Options** to set an uploader tag and to enable or disable automatic resolution tags. Extension titles become `Title (year) 1080p Uploader` or `Series S01E03 1080p Uploader`. The resolution is read from the DASH manifest when available, or from the playing video when the extension provides it.
+8. Use **Queue** to add a job without starting it. Queued jobs appear in both the queue list and the task list; **Start queue** launches as many queued jobs as `MAX_CONCURRENT` allows.
 
 Active jobs live in the container memory. Finished jobs and their filtered logs are saved under `/downloads/.logs`, so a log can be reopened after the download finishes and even after a container restart. **Clear history** also deletes those saved logs. Files remain on disk as long as the `/downloads` mount is correct.
 
@@ -51,6 +53,7 @@ Copy `.env.example` to `.env` when using Docker Compose. Fill in only what you n
 | `TZ` | Container time zone | `Europe/Brussels` in the example |
 | `MAX_CONCURRENT` | Number of downloads that can run at the same time | `3` |
 | `LOG_DIR` | Folder for saved logs and job history | `/downloads/.logs` |
+| `SETTINGS_FILE` | File with the uploader tag and resolution setting | `/downloads/.settings.json` |
 | `WEB_USER` and `WEB_PASSWORD` | Basic login. Leave both empty to disable login protection. | empty |
 | `EXT_TOKEN` | Secret token for the browser extension. Only needed if you want to start downloads from the extension. | empty |
 

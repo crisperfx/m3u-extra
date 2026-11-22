@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="nl">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#0b1020">
+  <title data-i18n="options.title">Opties · Crisperfx Stream Studio</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+  <div class="glow glow-one"></div>
+  <div class="glow glow-two"></div>
+
+  <header class="topbar">
+    <div class="brand">
+      <div class="logo">▶</div>
+      <div>
+        <h1>Crisperfx <span>Stream Studio</span></h1>
+        <p data-i18n="options.subtitle">Instellingen</p>
+      </div>
+    </div>
+    <div class="topbar-actions">
+      <button type="button" id="language" class="lang-select" data-i18n-aria-label="language.label" aria-label="Taal">NL</button>
+      <a class="back" href="/" data-i18n="action.back" data-i18n-title="action.back" title="Terug naar GUI">← Terug naar GUI</a>
+    </div>
+  </header>
+
+  <main class="shell narrow">
+    <section class="panel">
+      <div class="panel-head">
+        <div>
+          <span class="eyebrow" data-i18n="options.groupNames">Namen</span>
+          <h2 data-i18n="options.title">Opties</h2>
+        </div>
+      </div>
+      <div class="options-form">
+        <label class="field-col" for="uploaderTag">
+          <span class="minilabel" data-i18n="options.uploader">Uploader-tag</span>
+          <input type="text" id="uploaderTag" class="text-box" maxlength="40" data-i18n-placeholder="options.uploaderPlaceholder" placeholder="bijv. YTS">
+          <small data-i18n="options.uploaderHelp">Komt achter de titel, bijvoorbeeld: The Odyssey (2026) 1080p YTS</small>
+        </label>
+        <label class="switch option-switch" for="resolutionTag">
+          <input type="checkbox" id="resolutionTag" checked>
+          <span data-i18n="options.resolution">Resolutie automatisch toevoegen</span>
+        </label>
+        <p id="error" class="error"></p>
+        <button id="saveOptions" class="btn primary" data-i18n="action.save">Opslaan</button>
+        <p id="saved" class="saved" data-i18n="options.saved">Opgeslagen</p>
+      </div>
+    </section>
+  </main>
+
+  <script src="{{ url_for('static', filename='i18n.js') }}"></script>
+  <script src="{{ url_for('static', filename='options.js') }}"></script>
+</body>
+</html>

@@ -75,6 +75,26 @@ body {
 .panel-head h2 { margin: 0; font-size: 18px; letter-spacing: -.01em; }
 .eyebrow { display: block; font-size: 10px; letter-spacing: .14em; text-transform: uppercase; color: var(--accent-2); margin-bottom: 2px; }
 .head-actions { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; justify-content: flex-end; }
+[hidden] { display: none !important; }
+.narrow { max-width: 620px; }
+.top-link { padding: 6px 12px; font-size: 11px; }
+
+.text-box {
+  width: 100%; background: rgba(6, 10, 20, .75); color: var(--text);
+  border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px;
+  font: 13px/1.5 inherit; outline: none;
+}
+.text-box:focus { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(124, 140, 255, .16); }
+.options-form { display: grid; gap: 16px; }
+.options-form small { color: var(--muted); font-size: 12px; }
+.option-switch { margin-left: 0; }
+.saved { color: var(--ok); font-size: 12px; min-height: 16px; margin: 0; }
+
+.queue-panel { margin-bottom: 18px; }
+.compact-list { padding: 0; margin: 0; list-style: none; }
+.compact-list li { padding: 9px 12px; border-bottom: 1px solid var(--line); }
+.compact-list li:last-child { border-bottom: 0; }
+.queue-title { display: block; font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 textarea {
   width: 100%; min-height: 145px; resize: vertical;
