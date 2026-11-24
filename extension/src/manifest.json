@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "WidevineProxy2",
-  "version": "1.2.21",
+  "version": "1.2.22",
   "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA0noe2GObJSHptI2EE8ndNYj9KTM+pinsUssjlqWApyifShm9l00kUh/nrpPQ7qz9RvQtHdiY+nRmQQvskZ37e+RSWRGSTPx4P6dcs/6j9OGFskK6mxxM8abwm4beQYFCnnATICrkvQsqaadp6blXqltWq0f6hghhNSVbCWrZhkgvjMQf6ppWsDWtkeGmgwtPWI6k7ETwLjAVQugTAYW2k1uBsRZBiKfBwIyPckcoottc6S25W2Fo+Y/3EegITYHGChGA2w5TVwYCS748vl3rznn8H1T/iqvupxZnWvcUbolNTlF1RRlRoG5OnVpxrmnGqQGqJOJiha7CBs/MYkFdbwIDAQAB",
   "permissions": [
     "activeTab",
