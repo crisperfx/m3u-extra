@@ -66,8 +66,8 @@ For the browser extension, set the server URL to the address you use to open the
 
 The modified extension is included in `extension/`:
 
-- `WidevineProxy2-1.2.27.crx` — drag this file onto `chrome://extensions` with Developer mode enabled.
-- `WidevineProxy2-1.2.27.zip` — unpack it, then use **Load unpacked** and select the extracted folder (the one containing `manifest.json`).
+- `WidevineProxy2-1.2.28.crx` — drag this file onto `chrome://extensions` with Developer mode enabled.
+- `WidevineProxy2-1.2.28.zip` — unpack it, then use **Load unpacked** and select the extracted folder (the one containing `manifest.json`).
 
 The source files are in `extension/src`. The server URL and token are not hardcoded; open the extension options and enter them yourself. The manifest contains a fixed public key, so unpacked installs keep the same extension ID and keep these settings on later updates.
 
@@ -102,6 +102,7 @@ These settings build the `--select-video`, `--select-audio` and `--select-subtit
 - Server URL and token are configurable and are never hardcoded.
 - The key button can copy, send or do both; its label changes to `copy`, `send` or `copy+send`.
 - Stream selectors and `for=best` are exposed in the options page instead of being fixed in the generated command.
+- The popup shows `Now: <installed version>` with `Version Available: <live version>` underneath, plus **Reload** and **Update** buttons.
 - Manifest headers stay intact, including the full `index.mpd?...` URL and the original `Origin`, `Referer` and `User-Agent` headers.
 - Manifests without keys produce an empty `keys: []` entry, so no-key streams still generate a usable command.
 

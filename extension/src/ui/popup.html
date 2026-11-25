@@ -9,7 +9,14 @@
 <body>
 <div class="app">
     <header class="titlebar">
-        <h1><a class="title-link" href="https://github.com/DevLARLEY/WidevineProxy2" target="_blank" rel="noopener noreferrer">WidevineProxy2</a><span class="version" id="version"></span><a class="byline" href="https://github.com/DevLARLEY" target="_blank" rel="noopener noreferrer">by DevLARLEY</a></h1>
+        <div class="titlebar-info">
+            <h1><a class="title-link" href="https://github.com/DevLARLEY/WidevineProxy2" target="_blank" rel="noopener noreferrer">WidevineProxy2</a><a class="byline" href="https://github.com/DevLARLEY" target="_blank" rel="noopener noreferrer">by DevLARLEY</a></h1>
+            <div class="version-stack">
+                <span class="version" id="version">Now: …</span>
+                <button type="button" id="reloadExtension" class="head-btn" title="Reload extension">Reload</button>
+                <span class="version available" id="versionAvailable">Version Available: …</span>
+            </div>
+        </div>
         <div class="titlebar-status">
             <div class="state" id="statePill">
                 <span class="dot"></span><span id="stateText">disabled</span>
