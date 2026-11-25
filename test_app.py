@@ -72,6 +72,18 @@ class StreamParsingTests(unittest.TestCase):
         self.assertEqual(parsed["language_code"], "nld")
         self.assertIn("stpp", parsed["details"])
 
+    def test_parse_flemish_audio_line(self):
+        parsed = app_module.parse_stream_line("Aud eac-3 | Flemish | nl-BE | 6CH")
+        self.assertEqual(parsed["language"], "Vlaams")
+        self.assertEqual(parsed["language_code"], "nl-be")
+        self.assertNotIn("Flemish", parsed["details"])
+        self.assertNotIn("nl-BE", parsed["details"])
+
+    def test_parse_region_audio_line(self):
+        parsed = app_module.parse_stream_line("Aud eac-3 | English (UK) | en-GB | 6CH")
+        self.assertEqual(parsed["language"], "Engels (UK)")
+        self.assertEqual(parsed["language_code"], "en-gb")
+
     def test_collector_parses_sample(self):
         collector = app_module.StreamCollector()
         collector.feed(SAMPLE_LOG)

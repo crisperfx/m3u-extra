@@ -21,8 +21,9 @@ const VIDEO_PRESETS = Object.freeze([
 const LANG_KEYS = Object.freeze(["select_audio", "select_subtitle"]);
 const KEYS = Object.keys(DEFAULTS);
 const BEST_SUFFIX = ":for=best";
-const LANG_CODES = Object.freeze({ nl: ["nl", "nld"], en: ["en", "eng"] });
-const KNOWN_LANG_CODES = new Set(["nl", "nld", "en", "eng"]);
+const LANG_CODES = Object.freeze({ nl: ["nl", "nld"], nl_be: ["nl-BE"], en: ["en", "eng"] });
+const KNOWN_LANG_CODES = new Set(["nl", "nld", "nl-BE", "en", "eng"]);
+const escapeRegExp = (value) => String(value).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 const byId = (id) => document.getElementById(id);
 let statusTimer = null;
 
@@ -104,7 +105,7 @@ function composeLangSelection(key) {
         const extra = byId(key + "_lang_extra").value.trim().split(/\s*\|\s*/).filter(Boolean);
         codes.push(...extra);
         if (!codes.length) return "";
-        base = "lang=" + Array.from(new Set(codes)).join("|");
+        base = "lang=" + Array.from(new Set(codes)).map((code) => "^" + escapeRegExp(code) + "$").join("|");
     }
 
     const checkbox = byId(key + "_for_best");
@@ -132,7 +133,7 @@ function setLangSelection(key, stored) {
     else mode = "custom";
 
     if (mode === "langs") {
-        const codes = base.slice(5).split("|").map((code) => code.trim()).filter(Boolean);
+        const codes = base.slice(5).split("|").map((code) => code.trim().replace(/^\^/, "").replace(/\$$/, "").replace(/\\(.)/g, "$1")).filter(Boolean);
         Object.keys(LANG_CODES).forEach((lang) => {
             byId(key + "_lang_" + lang).checked = LANG_CODES[lang].some((code) => codes.includes(code));
         });

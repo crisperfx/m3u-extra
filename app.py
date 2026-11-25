@@ -153,13 +153,20 @@ LANGUAGE_LABELS = {
     "nld": "Nederlands",
     "dut": "Nederlands",
     "nl": "Nederlands",
+    "nl-be": "Vlaams",
+    "vlaams": "Vlaams",
+    "flemish": "Vlaams",
     "english": "Engels",
     "eng": "Engels",
     "en": "Engels",
+    "en-au": "Engels (AU)",
+    "en-gb": "Engels (UK)",
     "frans": "Frans",
     "fra": "Frans",
     "fre": "Frans",
     "fr": "Frans",
+    "fr-fr": "Frans",
+    "fr-ca": "Frans (Canada)",
     "duits": "Duits",
     "deu": "Duits",
     "ger": "Duits",
@@ -198,8 +205,10 @@ def build_language_pattern(mapping):
     return re.compile(r"(?<!\w)(" + alternatives + r")(?!\w)", re.I)
 
 
+LANGUAGE_REGION_LABELS = {code: label for code, label in LANGUAGE_LABELS.items() if "-" in code}
 LANGUAGE_CODE_LABELS = {code: label for code, label in LANGUAGE_LABELS.items() if len(code) <= 3}
-LANGUAGE_NAME_LABELS = {code: label for code, label in LANGUAGE_LABELS.items() if len(code) > 3}
+LANGUAGE_NAME_LABELS = {code: label for code, label in LANGUAGE_LABELS.items() if len(code) > 3 and "-" not in code}
+LANGUAGE_REGION_PATTERN = build_language_pattern(LANGUAGE_REGION_LABELS)
 LANGUAGE_CODE_PATTERN = build_language_pattern(LANGUAGE_CODE_LABELS)
 LANGUAGE_NAME_PATTERN = build_language_pattern(LANGUAGE_NAME_LABELS)
 RESOLUTION_PATTERN = re.compile(r"(?<!\w)(\d{3,4}[xX]\d{3,4})(?!\w)")
@@ -505,7 +514,7 @@ def clean_log_line(raw):
 
 
 def stream_language(text):
-    match = LANGUAGE_CODE_PATTERN.search(text) or LANGUAGE_NAME_PATTERN.search(text)
+    match = LANGUAGE_REGION_PATTERN.search(text) or LANGUAGE_CODE_PATTERN.search(text) or LANGUAGE_NAME_PATTERN.search(text)
     if not match:
         return None, None
     code = match.group(1).lower()
@@ -522,6 +531,7 @@ def parse_stream_line(raw):
     main = parts[0]
     rest = main[match.end() :].strip()
     code, language = stream_language(line)
+    aliases = {alias.lower() for alias, label in LANGUAGE_LABELS.items() if label == language}
     resolution_match = RESOLUTION_PATTERN.search(line)
     resolution = resolution_match.group(1) if resolution_match else None
     track_match = re.search(r"\b(\d+)\b", rest)
@@ -531,7 +541,7 @@ def parse_stream_line(raw):
             continue
         if code and part.lower() == code:
             continue
-        if language and part.lower() == language.lower():
+        if language and (part.lower() == language.lower() or part.lower() in aliases):
             continue
         details.append(part)
     name = resolution or language or rest or STREAM_LABELS[kind]

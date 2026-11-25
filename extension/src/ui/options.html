@@ -61,6 +61,7 @@
             </div>
             <div class="langs" id="select_audio_langs" hidden>
                 <label class="check"><input type="checkbox" id="select_audio_lang_nl"> Nederlands (<code>nl|nld</code>)</label>
+                <label class="check"><input type="checkbox" id="select_audio_lang_nl_be"> Vlaams (<code>nl-BE</code>)</label>
                 <label class="check"><input type="checkbox" id="select_audio_lang_en"> Engels (<code>en|eng</code>)</label>
                 <label class="field">
                     <span>Extra taalcodes</span>
@@ -87,6 +88,7 @@
             </div>
             <div class="langs" id="select_subtitle_langs" hidden>
                 <label class="check"><input type="checkbox" id="select_subtitle_lang_nl"> Nederlands (<code>nl|nld</code>)</label>
+                <label class="check"><input type="checkbox" id="select_subtitle_lang_nl_be"> Vlaams (<code>nl-BE</code>)</label>
                 <label class="check"><input type="checkbox" id="select_subtitle_lang_en"> Engels (<code>en|eng</code>)</label>
                 <label class="field">
                     <span>Extra taalcodes</span>
@@ -103,7 +105,7 @@
             </label>
         </fieldset>
 
-        <p class="hint">Video gebruikt de dropdown. Audio en ondertiteling zijn óf <code>for=all</code> óf één of meerdere talen; meerdere talen worden gecombineerd als <code>lang=nl|nld|en|eng</code>.</p>
+        <p class="hint">Video gebruikt de dropdown. Audio en ondertiteling zijn óf <code>for=all</code> óf één of meerdere talen; meerdere talen worden gecombineerd als <code>lang=^nl$|^nld$|^en$|^eng$</code>. Vlaams is <code>nl-BE</code>.</p>
     </section>
 
     <div class="actions">

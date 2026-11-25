@@ -66,8 +66,8 @@ For the browser extension, set the server URL to the address you use to open the
 
 The modified extension is included in `extension/`:
 
-- `WidevineProxy2-1.2.24.crx` — drag this file onto `chrome://extensions` with Developer mode enabled.
-- `WidevineProxy2-1.2.24.zip` — unpack it, then use **Load unpacked** and select the extracted folder (the one containing `manifest.json`).
+- `WidevineProxy2-1.2.26.crx` — drag this file onto `chrome://extensions` with Developer mode enabled.
+- `WidevineProxy2-1.2.26.zip` — unpack it, then use **Load unpacked** and select the extracted folder (the one containing `manifest.json`).
 
 The source files are in `extension/src`. The server URL and token are not hardcoded; open the extension options and enter them yourself. The manifest contains a fixed public key, so unpacked installs keep the same extension ID and keep these settings on later updates.
 
@@ -92,7 +92,7 @@ These settings build the `--select-video`, `--select-audio` and `--select-subtit
 
 - **Video**: a preset dropdown with `none`, `best`, 1080p, 720p, 576p, 432p, 4K and a custom value. The separate **for=best** checkbox appends `:for=best` when no stream matches.
 - **Audio** and **Ondertiteling**: choose `none`, `for=all`, **Talen** (languages) or **Aangepast** (custom).
-- In **Talen**, check Dutch (`nl|nld`) and/or English (`en|eng`) and add extra codes such as `fr|fre` in the extra field. Multiple languages are combined into `lang=nl|nld|en|eng`.
+- In **Talen**, check Dutch (`nl|nld`), Flemish (`nl-BE`) and/or English (`en|eng`) and add extra codes such as `fr|fre` in the extra field. Multiple languages are combined into exact matches like `lang=^nl$|^nld$|^nl-BE$|^en$|^eng$`.
 - The separate **for=best** checkbox appends `:for=best` for language or custom selections. It is disabled for `none` and `for=all`.
 - Defaults: video `res=^1280x:for=best`, audio `for=all`, subtitles `for=all`.
 
