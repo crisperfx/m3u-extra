@@ -691,6 +691,7 @@ class StaticAssetTests(unittest.TestCase):
         self.assertIn("position: fixed", css)
         self.assertIn("bottom: calc(84px", css)
         self.assertIn("backdrop-filter: none", css)
+        self.assertIn("z-index: 60", css)
 
 
 if __name__ == "__main__":
