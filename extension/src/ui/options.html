@@ -42,9 +42,17 @@
             <span>Video (<code>-sv</code>)</span>
             <select id="select_video_preset"></select>
         </label>
-        <label class="check">
-            <input type="checkbox" id="select_video_for_best">
-            <span>Beste beschikbare bij geen match (<code>for=best</code>)</span>
+        <label class="field">
+            <span>Aantal tracks (<code>for</code>)</span>
+            <select id="select_video_for">
+                <option value="">Standaard (beste)</option>
+                <option value="best">Beste 1</option>
+                <option value="best2">Beste 2</option>
+                <option value="best3">Beste 3</option>
+                <option value="worst">Slechtste 1</option>
+                <option value="worst2">Slechtste 2</option>
+                <option value="all">Alle</option>
+            </select>
         </label>
         <label class="field" id="select_video_custom" hidden>
             <span>Aangepaste video-selectie</span>
@@ -72,9 +80,16 @@
                 <span>Aangepaste audio-selectie</span>
                 <input type="text" id="select_audio" spellcheck="false" autocomplete="off">
             </label>
-            <label class="check">
-                <input type="checkbox" id="select_audio_for_best">
-                <span>Beste beschikbare bij geen match (<code>for=best</code>)</span>
+            <label class="field">
+                <span>Aantal tracks (<code>for</code>)</span>
+                <select id="select_audio_for">
+                    <option value="">Standaard (beste)</option>
+                    <option value="best">Beste 1</option>
+                    <option value="best2">Beste 2</option>
+                    <option value="best3">Beste 3</option>
+                    <option value="worst">Slechtste 1</option>
+                    <option value="worst2">Slechtste 2</option>
+                </select>
             </label>
         </fieldset>
 
@@ -99,13 +114,20 @@
                 <span>Aangepaste ondertitel-selectie</span>
                 <input type="text" id="select_subtitle" spellcheck="false" autocomplete="off">
             </label>
-            <label class="check">
-                <input type="checkbox" id="select_subtitle_for_best">
-                <span>Beste beschikbare bij geen match (<code>for=best</code>)</span>
+            <label class="field">
+                <span>Aantal tracks (<code>for</code>)</span>
+                <select id="select_subtitle_for">
+                    <option value="">Standaard (beste)</option>
+                    <option value="best">Beste 1</option>
+                    <option value="best2">Beste 2</option>
+                    <option value="best3">Beste 3</option>
+                    <option value="worst">Slechtste 1</option>
+                    <option value="worst2">Slechtste 2</option>
+                </select>
             </label>
         </fieldset>
 
-        <p class="hint">Video gebruikt de dropdown. Audio en ondertiteling zijn óf <code>for=all</code> óf één of meerdere talen; meerdere talen worden gecombineerd als <code>lang=^nl$|^nld$|^en$|^eng$</code>. Vlaams is <code>nl-BE</code>.</p>
+        <p class="hint">Audio en ondertiteling zijn óf <code>for=all</code> óf één of meerdere talen; meerdere talen worden gecombineerd als <code>lang=^nl$|^nld$|^en$|^eng$</code>. Vlaams selecteer je met de Vlaams-checkbox of <code>lang=^nl-BE$:for=best</code>. Twee beste tracks voor Vlaams en Engels: <code>lang=^nl-BE$|^en$:for=best2</code>. Een kale waarde zoals <code>"nl|en":for=best2</code> wordt omgezet naar <code>lang=^nl$|^en$:for=best2</code>.</p>
     </section>
 
     <div class="actions">

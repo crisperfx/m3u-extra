@@ -66,8 +66,8 @@ For the browser extension, set the server URL to the address you use to open the
 
 The modified extension is included in `extension/`:
 
-- `WidevineProxy2-1.2.26.crx` — drag this file onto `chrome://extensions` with Developer mode enabled.
-- `WidevineProxy2-1.2.26.zip` — unpack it, then use **Load unpacked** and select the extracted folder (the one containing `manifest.json`).
+- `WidevineProxy2-1.2.27.crx` — drag this file onto `chrome://extensions` with Developer mode enabled.
+- `WidevineProxy2-1.2.27.zip` — unpack it, then use **Load unpacked** and select the extracted folder (the one containing `manifest.json`).
 
 The source files are in `extension/src`. The server URL and token are not hardcoded; open the extension options and enter them yourself. The manifest contains a fixed public key, so unpacked installs keep the same extension ID and keep these settings on later updates.
 
@@ -90,10 +90,11 @@ Click **Opslaan** after changing anything. Chrome asks for host permission for t
 
 These settings build the `--select-video`, `--select-audio` and `--select-subtitle` parts of the command:
 
-- **Video**: a preset dropdown with `none`, `best`, 1080p, 720p, 576p, 432p, 4K and a custom value. The separate **for=best** checkbox appends `:for=best` when no stream matches.
+- **Video**: a preset dropdown with `none`, `best`, 1080p, 720p, 576p, 432p, 4K and a custom value. The **for** dropdown appends `:for=best`, `:for=best2`, `:for=worst`, etc.
 - **Audio** and **Ondertiteling**: choose `none`, `for=all`, **Talen** (languages) or **Aangepast** (custom).
 - In **Talen**, check Dutch (`nl|nld`), Flemish (`nl-BE`) and/or English (`en|eng`) and add extra codes such as `fr|fre` in the extra field. Multiple languages are combined into exact matches like `lang=^nl$|^nld$|^nl-BE$|^en$|^eng$`.
-- The separate **for=best** checkbox appends `:for=best` for language or custom selections. It is disabled for `none` and `for=all`.
+- The **for** dropdown appends `:for=best`, `:for=best2`, `:for=best3`, `:for=worst` or `:for=worst2` to language or custom selections. It is disabled for `none` and `for=all`.
+- Select Flemish audio with the **Vlaams** checkbox plus **Beste 1**, or use custom `lang=^nl-BE$:for=best`. For two best tracks across Flemish and English use `lang=^nl-BE$|^en$:for=best2`. A bare `"nl|en":for=best2` is normalized to `lang=^nl$|^en$:for=best2`.
 - Defaults: video `res=^1280x:for=best`, audio `for=all`, subtitles `for=all`.
 
 ### Extra compared with the stock extension

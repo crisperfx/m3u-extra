@@ -20,7 +20,7 @@ const VIDEO_PRESETS = Object.freeze([
 
 const LANG_KEYS = Object.freeze(["select_audio", "select_subtitle"]);
 const KEYS = Object.keys(DEFAULTS);
-const BEST_SUFFIX = ":for=best";
+const FILTER_KEYS = new Set(["id", "lang", "name", "codecs", "res", "frame", "channel", "range", "url", "segsmin", "segsmax", "plistdurmin", "plistdurmax", "bwmin", "bwmax", "role", "for"]);
 const LANG_CODES = Object.freeze({ nl: ["nl", "nld"], nl_be: ["nl-BE"], en: ["en", "eng"] });
 const KNOWN_LANG_CODES = new Set(["nl", "nld", "nl-BE", "en", "eng"]);
 const escapeRegExp = (value) => String(value).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -45,16 +45,60 @@ function hasForModifier(value) {
 
 function splitSelection(value) {
     const stored = String(value || "").trim();
-    if (stored.endsWith(BEST_SUFFIX)) return [stored.slice(0, -BEST_SUFFIX.length), true];
-    return [stored, false];
+    const match = stored.match(/^(.*?)(:for=(?:best\d*|worst\d*|all))$/i);
+    if (match) return [match[1], match[2]];
+    return [stored, ""];
 }
 
-function updateForBest(key) {
-    const base = byId(key).value.trim();
-    const checkbox = byId(key + "_for_best");
+function cleanCode(value) {
+    return String(value || "").trim().replace(/^(['"])(.*)\1$/, "$2").replace(/^\^/, "").replace(/\$$/, "").replace(/\\(.)/g, "$1");
+}
+
+function normalizeCustomLangSelection(value) {
+    const raw = String(value || "").trim();
+    if (!raw) return "";
+    const [base, modifier] = splitSelection(raw);
+    const unquoted = base.replace(/^(['"])(.*)\1$/, "$2");
+    const key = unquoted.split("=")[0].trim().toLowerCase();
+    if (key === "lang") {
+        const codes = unquoted.slice(5).split("|").map(cleanCode).filter(Boolean);
+        if (!codes.length || !codes.every((code) => /^[A-Za-z]{2,3}(?:-[A-Za-z0-9]+)?$/.test(code))) return raw;
+        const normalized = "lang=" + codes.map((code) => "^" + escapeRegExp(code) + "$").join("|");
+        return modifier ? normalized + modifier : normalized;
+    }
+    if (FILTER_KEYS.has(key)) return raw;
+    const codes = unquoted.split("|").map(cleanCode).filter(Boolean);
+    if (!codes.length || !codes.every((code) => /^[A-Za-z]{2,3}(?:-[A-Za-z0-9]+)?$/.test(code))) return raw;
+    const normalized = "lang=" + codes.map((code) => "^" + escapeRegExp(code) + "$").join("|");
+    return modifier ? normalized + modifier : normalized;
+}
+
+function getLangCodes(key) {
+    const codes = [];
+    Object.keys(LANG_CODES).forEach((lang) => {
+        if (byId(key + "_lang_" + lang).checked) codes.push(...LANG_CODES[lang]);
+    });
+    const extra = byId(key + "_lang_extra").value.trim().split(/\s*\|\s*/).filter(Boolean);
+    codes.push(...extra);
+    return Array.from(new Set(codes));
+}
+
+function selectionBase(key) {
+    if (key === "select_video") return byId(key).value.trim();
+    const mode = getLangMode(key);
+    if (mode === "none") return "";
+    if (mode === "all") return "for=all";
+    if (mode === "custom") return normalizeCustomLangSelection(byId(key).value.trim());
+    const codes = getLangCodes(key);
+    return codes.length ? "lang=" + codes.map((code) => "^" + escapeRegExp(code) + "$").join("|") : "";
+}
+
+function updateForModifier(key) {
+    const base = selectionBase(key);
+    const select = byId(key + "_for");
     const disabled = !base || hasForModifier(base);
-    checkbox.disabled = disabled;
-    if (disabled) checkbox.checked = false;
+    select.disabled = disabled;
+    if (disabled) select.value = "";
 }
 
 function getLangMode(key) {
@@ -76,17 +120,20 @@ function updateLangMode(key) {
     const mode = getLangMode(key);
     byId(key + "_langs").hidden = mode !== "langs";
     byId(key + "_custom").hidden = mode !== "custom";
-    const checkbox = byId(key + "_for_best");
-    const disabled = mode === "none" || mode === "all";
-    checkbox.disabled = disabled;
-    if (disabled) checkbox.checked = false;
+    const forSelect = byId(key + "_for");
+    if (mode === "none" || mode === "all") {
+        forSelect.disabled = true;
+        forSelect.value = "";
+    } else {
+        updateForModifier(key);
+    }
 }
 
 function composeVideoSelection() {
-    const base = byId("select_video").value.trim();
-    const checkbox = byId("select_video_for_best");
-    if (!base || !checkbox.checked || checkbox.disabled) return base;
-    return hasForModifier(base) ? base : base + BEST_SUFFIX;
+    const base = selectionBase("select_video");
+    const modifier = byId("select_video_for").value.trim();
+    if (!base || !modifier) return base;
+    return hasForModifier(base) ? base : base + ":for=" + modifier;
 }
 
 function composeLangSelection(key) {
@@ -94,23 +141,12 @@ function composeLangSelection(key) {
     if (mode === "none") return "";
     if (mode === "all") return "for=all";
 
-    let base = "";
-    if (mode === "custom") {
-        base = byId(key).value.trim();
-    } else {
-        const codes = [];
-        Object.keys(LANG_CODES).forEach((lang) => {
-            if (byId(key + "_lang_" + lang).checked) codes.push(...LANG_CODES[lang]);
-        });
-        const extra = byId(key + "_lang_extra").value.trim().split(/\s*\|\s*/).filter(Boolean);
-        codes.push(...extra);
-        if (!codes.length) return "";
-        base = "lang=" + Array.from(new Set(codes)).map((code) => "^" + escapeRegExp(code) + "$").join("|");
-    }
+    const base = selectionBase(key);
+    if (!base) return "";
 
-    const checkbox = byId(key + "_for_best");
-    if (!base || !checkbox.checked || checkbox.disabled) return base;
-    return hasForModifier(base) ? base : base + BEST_SUFFIX;
+    const modifier = byId(key + "_for").value.trim();
+    if (!base || !modifier) return base;
+    return hasForModifier(base) ? base : base + ":for=" + modifier;
 }
 
 function composeSelection(key) {
@@ -118,14 +154,14 @@ function composeSelection(key) {
 }
 
 function setVideoSelection(stored) {
-    const [base, useBest] = splitSelection(stored);
+    const [base, modifier] = splitSelection(stored);
     byId("select_video").value = base;
-    byId("select_video_for_best").checked = Boolean(base) && useBest && !hasForModifier(base);
-    updateForBest("select_video");
+    byId("select_video_for").value = modifier ? modifier.replace(/^:for=/i, "") : "";
+    updateForModifier("select_video");
 }
 
 function setLangSelection(key, stored) {
-    const [base, useBest] = splitSelection(stored);
+    const [base, modifier] = splitSelection(stored);
     let mode;
     if (!base) mode = "none";
     else if (base === "for=all" || base === "all") mode = "all";
@@ -133,7 +169,7 @@ function setLangSelection(key, stored) {
     else mode = "custom";
 
     if (mode === "langs") {
-        const codes = base.slice(5).split("|").map((code) => code.trim().replace(/^\^/, "").replace(/\$$/, "").replace(/\\(.)/g, "$1")).filter(Boolean);
+        const codes = base.slice(5).split("|").map(cleanCode).filter(Boolean);
         Object.keys(LANG_CODES).forEach((lang) => {
             byId(key + "_lang_" + lang).checked = LANG_CODES[lang].some((code) => codes.includes(code));
         });
@@ -146,7 +182,7 @@ function setLangSelection(key, stored) {
     }
 
     setLangMode(key, mode);
-    byId(key + "_for_best").checked = Boolean(base) && useBest && mode !== "all" && mode !== "none";
+    byId(key + "_for").value = modifier ? modifier.replace(/^:for=/i, "") : "";
     updateLangMode(key);
 }
 
@@ -192,13 +228,14 @@ function buildControls() {
         videoSelect.append(option);
     });
     videoSelect.addEventListener("change", () => applyVideoPreset());
-    byId("select_video").addEventListener("input", () => updateForBest("select_video"));
+    byId("select_video").addEventListener("input", () => updateForModifier("select_video"));
 
     LANG_KEYS.forEach((key) => {
         ["none", "all", "langs", "custom"].forEach((mode) => {
             byId(key + "_mode_" + mode).addEventListener("change", () => updateLangMode(key));
         });
         byId(key + "_lang_extra").addEventListener("input", () => updateLangMode(key));
+        byId(key).addEventListener("input", () => updateForModifier(key));
     });
 }
 
@@ -208,12 +245,12 @@ function applyVideoPreset() {
     if (selected === "__custom__") {
         custom.hidden = false;
         byId("select_video").focus();
-        updateForBest("select_video");
+        updateForModifier("select_video");
         return;
     }
     byId("select_video").value = selected;
     custom.hidden = true;
-    updateForBest("select_video");
+    updateForModifier("select_video");
 }
 
 function syncVideoPreset() {
@@ -221,7 +258,7 @@ function syncVideoPreset() {
     const isPreset = VIDEO_PRESETS.some(([preset]) => preset === value);
     byId("select_video_preset").value = isPreset ? value : "__custom__";
     byId("select_video_custom").hidden = isPreset;
-    updateForBest("select_video");
+    updateForModifier("select_video");
 }
 
 async function load() {
