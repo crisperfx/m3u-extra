@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="theme-color" content="#0b1020">
   <title data-i18n="options.title">Opties · Crisperfx Stream Studio</title>
-  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}?v={{ static_version('style.css') }}">
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}?v={{ app_version }}-{{ static_version('style.css') }}">
 </head>
 <body>
   <div class="glow glow-one"></div>
@@ -55,7 +55,7 @@
     </section>
   </main>
 
-  <script src="{{ url_for('static', filename='i18n.js') }}?v={{ static_version('i18n.js') }}"></script>
-  <script src="{{ url_for('static', filename='options.js') }}?v={{ static_version('options.js') }}"></script>
+  <script src="{{ url_for('static', filename='i18n.js') }}?v={{ app_version }}-{{ static_version('i18n.js') }}"></script>
+  <script src="{{ url_for('static', filename='options.js') }}?v={{ app_version }}-{{ static_version('options.js') }}"></script>
 </body>
 </html>

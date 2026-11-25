@@ -16,6 +16,7 @@ from urllib.parse import parse_qsl, urlencode, urlparse, urlsplit, urlunsplit
 from flask import Flask, Response, abort, jsonify, render_template, request, send_file
 
 APP_DIR = Path(__file__).resolve().parent
+APP_VERSION = "1.2.35"
 STATIC_DIR = APP_DIR / "static"
 DOWNLOAD_DIR = Path(os.environ.get("DOWNLOAD_DIR", "/downloads")).resolve()
 NDL_BINARY = os.environ.get("NDL_BINARY", "/usr/local/bin/N_m3u8DL-RE")
@@ -142,7 +143,7 @@ def static_version(filename):
 
 @app.context_processor
 def inject_static_version():
-    return {"static_version": static_version}
+    return {"app_version": APP_VERSION, "static_version": static_version}
 
 
 _jobs = {}
