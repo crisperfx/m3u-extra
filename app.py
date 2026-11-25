@@ -16,6 +16,7 @@ from urllib.parse import parse_qsl, urlencode, urlparse, urlsplit, urlunsplit
 from flask import Flask, Response, abort, jsonify, render_template, request, send_file
 
 APP_DIR = Path(__file__).resolve().parent
+STATIC_DIR = APP_DIR / "static"
 DOWNLOAD_DIR = Path(os.environ.get("DOWNLOAD_DIR", "/downloads")).resolve()
 NDL_BINARY = os.environ.get("NDL_BINARY", "/usr/local/bin/N_m3u8DL-RE")
 FFMPEG_BINARY = os.environ.get("FFMPEG_BINARY") or shutil.which("ffmpeg") or "ffmpeg"
@@ -129,6 +130,20 @@ def save_settings(data):
 
 app = Flask(__name__)
 app.config["MAX_CONTENT_LENGTH"] = 512 * 1024
+app.config["SEND_FILE_MAX_AGE_DEFAULT"] = 0
+
+
+def static_version(filename):
+    try:
+        return int(STATIC_DIR.joinpath(filename).stat().st_mtime)
+    except OSError:
+        return 0
+
+
+@app.context_processor
+def inject_static_version():
+    return {"static_version": static_version}
+
 
 _jobs = {}
 _jobs_lock = threading.Lock()

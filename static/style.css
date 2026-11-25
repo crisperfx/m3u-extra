@@ -253,7 +253,7 @@ body.log-page { min-height: 100vh; min-height: 100dvh; }
   .brand h1 { font-size: 16px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .brand p { display: none; }
   .topbar-actions { flex: 0 0 auto; flex-wrap: nowrap; justify-content: flex-end; gap: 6px; }
-  .logo { width: 36px; height: 36px; border-radius: 11px; }
+  .logo { width: 36px; height: 36px; border-radius: 11px; flex: 0 0 auto; }
   .shell { padding: 12px; gap: 12px; }
   .panel { padding: 14px; border-radius: 14px; }
   .panel-head { align-items: stretch; flex-direction: column; }

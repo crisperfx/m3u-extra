@@ -680,5 +680,17 @@ class EffectiveResolutionTests(unittest.TestCase):
         self.assertTrue((directory / f"{old_name}.mkv").exists())
 
 
+class StaticAssetTests(unittest.TestCase):
+    def test_index_static_links_are_versioned(self):
+        html = app_module.app.test_client().get("/").get_data(as_text=True)
+        self.assertRegex(html, r"/static/style\.css\?v=\d+")
+        self.assertRegex(html, r"/static/app\.js\?v=\d+")
+
+    def test_mobile_bottom_nav_css_present(self):
+        css = app_module.STATIC_DIR.joinpath("style.css").read_text(encoding="utf-8")
+        self.assertIn("position: fixed", css)
+        self.assertIn("bottom: calc(84px", css)
+
+
 if __name__ == "__main__":
     unittest.main()

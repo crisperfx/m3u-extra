@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="theme-color" content="#0b1020">
   <title data-i18n="log.title">Log · Crisperfx Stream Studio</title>
-  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}?v={{ static_version('style.css') }}">
 </head>
 <body class="log-page" data-job-id="{{ job_id }}">
   <div class="glow glow-one"></div>
@@ -53,8 +53,8 @@
     </section>
   </main>
 
-  <script src="{{ url_for('static', filename='i18n.js') }}"></script>
-  <script src="{{ url_for('static', filename='streams.js') }}"></script>
-  <script src="{{ url_for('static', filename='log.js') }}"></script>
+  <script src="{{ url_for('static', filename='i18n.js') }}?v={{ static_version('i18n.js') }}"></script>
+  <script src="{{ url_for('static', filename='streams.js') }}?v={{ static_version('streams.js') }}"></script>
+  <script src="{{ url_for('static', filename='log.js') }}?v={{ static_version('log.js') }}"></script>
 </body>
 </html>
