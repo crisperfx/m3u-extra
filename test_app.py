@@ -683,8 +683,8 @@ class EffectiveResolutionTests(unittest.TestCase):
 class StaticAssetTests(unittest.TestCase):
     def test_index_static_links_are_versioned(self):
         html = app_module.app.test_client().get("/").get_data(as_text=True)
-        self.assertRegex(html, r"/static/style\.css\?v=1\.2\.35-\d+")
-        self.assertRegex(html, r"/static/app\.js\?v=1\.2\.35-\d+")
+        self.assertRegex(html, r"/static/style\.css\?v=1\.2\.36-\d+")
+        self.assertRegex(html, r"/static/app\.js\?v=1\.2\.36-\d+")
 
     def test_mobile_bottom_nav_css_present(self):
         css = app_module.STATIC_DIR.joinpath("style.css").read_text(encoding="utf-8")
