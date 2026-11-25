@@ -690,6 +690,7 @@ class StaticAssetTests(unittest.TestCase):
         css = app_module.STATIC_DIR.joinpath("style.css").read_text(encoding="utf-8")
         self.assertIn("position: fixed", css)
         self.assertIn("bottom: calc(84px", css)
+        self.assertIn("backdrop-filter: none", css)
 
 
 if __name__ == "__main__":
