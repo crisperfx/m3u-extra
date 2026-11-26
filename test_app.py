@@ -1198,20 +1198,20 @@ class StaticAssetTests(unittest.TestCase):
         self.assertIn('"manifest"!==titleName.toLowerCase()', history)
         self.assertIn('"manifest"!==titleName.toLowerCase()', popup)
 
-    def test_extension_version_labels_use_installed_version(self):
+    def test_extension_version_labels_use_effective_version(self):
         root = Path(app_module.__file__).resolve().parent
         popup = root.joinpath("extension/src/ui/popup.min.js").read_text(encoding="utf-8")
         background = root.joinpath("extension/src/library/background/bundle.min.js").read_text(encoding="utf-8")
         readme = root.joinpath("README.md").read_text(encoding="utf-8")
-        self.assertIn('c.textContent="Active: "+(t||"unknown")', popup)
+        self.assertIn("function wp2VCompare", popup)
+        self.assertIn('c.textContent="Active: "+(i||"unknown")', popup)
         self.assertIn('a.textContent="Version Available: "+(r||"unknown")', popup)
-        self.assertNotIn('c.textContent="Active: "+(r||t)', popup)
+        self.assertIn('e.wp2Live&&e.wp2Live.version', popup)
+        self.assertIn("if(r&&r.data&&r.data.version){await wp2ShowVersion()}", popup)
         self.assertNotIn('c.textContent="Active: "+r.data.version', popup)
-        self.assertNotIn("if(!r)r=t;", popup)
-        self.assertNotIn("e.wp2Live&&e.wp2Live.version", popup)
         self.assertIn("async function liveAvailableVersion()", background)
         self.assertIn('if("LIVE_VERSION"===e.type){liveAvailableVersion()', background)
-        self.assertIn("Chrome-installed version as **Active**", readme)
+        self.assertIn("effective script version as **Active**", readme)
         self.assertIn("**Version Available** shows `unknown`", readme)
 
     def test_probe_queue_ui_present(self):
