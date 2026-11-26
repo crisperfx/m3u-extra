@@ -1109,6 +1109,33 @@ def inject_dash_ad_filters(tokens):
     return result
 
 
+def normalize_mux_value(value):
+    parts = value.split(":")
+    if not any(part.lower() in ("mkv", "format=mkv") for part in parts):
+        return value
+    parts = [part for part in parts if not re.match(r"^muxer=", part, re.I)]
+    parts.append("muxer=mkvmerge")
+    return ":".join(parts)
+
+
+def normalize_mkv_muxer(args):
+    result = []
+    index = 0
+    while index < len(args):
+        token = args[index]
+        if token in ("-M", "--mux-after-done") and index + 1 < len(args):
+            result.extend([token, normalize_mux_value(args[index + 1])])
+            index += 2
+            continue
+        if token.startswith("--mux-after-done="):
+            name, value = token.split("=", 1)
+            result.append(f"{name}={normalize_mux_value(value)}")
+        else:
+            result.append(token)
+        index += 1
+    return result
+
+
 def parse_command(raw, title_override=None):
     raw = raw.replace("\r\n", " ").replace("\n", " ").replace("\r", " ").strip()
     if not raw:
@@ -1140,6 +1167,7 @@ def parse_command(raw, title_override=None):
     args, save_name_raw = strip_option(args, "--save-name")
     args = sanitize_manifest_filters(args)
     args = inject_dash_ad_filters(args)
+    args = normalize_mkv_muxer(args)
 
     base_dir = safe_dir(save_dir_raw)
     override = safe_name(title_override, limit=120) if title_override else None

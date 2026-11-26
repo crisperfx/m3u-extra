@@ -47,7 +47,7 @@ ENV PYTHONUNBUFFERED=1 \
     MP4DECRYPT_BINARY=/usr/local/bin/mp4decrypt
 
 RUN apt-get update \
-  && apt-get install -y --no-install-recommends ca-certificates curl unzip xz-utils libstdc++6 \
+  && apt-get install -y --no-install-recommends ca-certificates curl unzip xz-utils mkvtoolnix libstdc++6 \
   && curl -fsSL "https://github.com/FFmpeg-Builds/FFmpeg-Builds/releases/download/latest/ffmpeg-n9.0-latest-linux64-gpl-9.0.tar.xz" -o /tmp/ffmpeg.tar.xz \
   && mkdir -p /tmp/ffmpeg \
   && tar -xJf /tmp/ffmpeg.tar.xz -C /tmp/ffmpeg --strip-components=2 \

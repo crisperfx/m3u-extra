@@ -452,6 +452,19 @@ class TitleMetadataTests(unittest.TestCase):
         self.assertEqual(option(series, "--save-name"), "Omerta S01E03 YTS")
         self.assertEqual(option(series, "--save-dir"), str(app_module.DOWNLOAD_DIR))
 
+    def test_parse_command_forces_mkvmerge_for_mkv(self):
+        base = 'N_m3u8DL-RE.exe "https://example.com/index.mpd"'
+        with mock.patch.object(app_module, "fetch_manifest_text", return_value=None):
+            argv = app_module.parse_command(f"{base} -M format=mkv")
+            replaced = app_module.parse_command(
+                f"{base} -M format=mkv:muxer=ffmpeg"
+            )
+            mp4 = app_module.parse_command(f"{base} --mux-after-done=format=mp4")
+        self.assertIn("format=mkv:muxer=mkvmerge", argv)
+        self.assertIn("format=mkv:muxer=mkvmerge", replaced)
+        self.assertIn("--mux-after-done=format=mp4", mp4)
+        self.assertNotIn("muxer=ffmpeg", replaced)
+
     def test_extension_submit_applies_meta(self):
         with (
             mock.patch.object(app_module, "EXT_TOKEN", "token"),
@@ -1197,6 +1210,9 @@ class StaticAssetTests(unittest.TestCase):
             "ffmpeg-n9.0-latest-linux64-gpl-9.0.tar.xz", dockerfile
         )
         self.assertIn("FFMPEG_BINARY=/usr/bin/ffmpeg", dockerfile)
+        self.assertIn("mkvtoolnix", dockerfile)
+        source = Path(app_module.__file__).read_text(encoding="utf-8")
+        self.assertIn("muxer=mkvmerge", source)
         self.assertIn("ln -sf /usr/local/bin/ffmpeg /usr/bin/ffmpeg", dockerfile)
         self.assertIn("/usr/bin/ffmpeg -version", dockerfile)
         self.assertNotIn("unzip ffmpeg libstdc++6", dockerfile)
