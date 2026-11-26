@@ -809,6 +809,13 @@ def has_option(tokens, names):
     return False
 
 
+def probe_argv(argv):
+    tokens = list(argv or [])
+    if not has_option(tokens, {"--skip-download"}):
+        tokens.append("--skip-download")
+    return tokens
+
+
 def is_dash_input(tokens):
     for token in tokens:
         if token.startswith("-"):
@@ -1102,12 +1109,13 @@ def parse_command(raw, title_override=None):
 
 
 class Job:
-    def __init__(self, command, argv, title_override=None):
+    def __init__(self, command, argv, title_override=None, probe_streams=False):
         self.id = uuid.uuid4().hex[:12]
         self.command = command
         self.title = extract_title(argv)
         self.argv = argv
         self.title_override = title_override
+        self.needs_stream_selection = bool(probe_streams)
         self.resolution_tag = bool(load_settings().get("resolution_tag"))
         try:
             self.save_dir = safe_dir(option_value(argv, "--save-dir"))
@@ -1139,6 +1147,7 @@ class Job:
             "status": self.status,
             "phase": self.phase,
             "selectors": stream_selectors(self.argv),
+            "needs_stream_selection": self.needs_stream_selection,
             "progress": self.progress,
             "detail": self.detail,
             "streams": self.streams.info(),
@@ -1252,6 +1261,8 @@ class Job:
             self.phase = "gefaald"
         elif self.status == "cancelled":
             self.phase = "geannuleerd"
+        elif self.status == "needs_selection":
+            self.phase = "needsSelection"
         self.output.put(("status", self.info()))
 
     def append_log(self, text):
@@ -1289,7 +1300,7 @@ class Job:
         command = rewrite_stream_selectors(self.command, selectors)
         argv = parse_command(command, title_override=self.title_override)
         with _jobs_lock:
-            if self.status != "queued":
+            if self.status not in ("queued", "needs_selection"):
                 raise RuntimeError("Taak is al gestart")
             self.command = command
             self.argv = argv
@@ -1297,6 +1308,10 @@ class Job:
             self.save_dir = safe_dir(option_value(argv, "--save-dir"))
             self.save_name = option_value(argv, "--save-name")
             self.resolution_tag = bool(load_settings().get("resolution_tag"))
+            if self.status == "needs_selection":
+                self.needs_stream_selection = False
+                self.status = "queued"
+                self.phase = "queued"
         return self.info()
 
     def _run(self):
@@ -1304,9 +1319,10 @@ class Job:
         env = os.environ.copy()
         env["PYTHONUNBUFFERED"] = "1"
         env["TERM"] = "xterm"
+        run_argv = probe_argv(self.argv) if self.needs_stream_selection else self.argv
         try:
             self.proc = subprocess.Popen(
-                self.argv,
+                run_argv,
                 cwd=str(DOWNLOAD_DIR),
                 stdout=subprocess.PIPE,
                 stderr=subprocess.STDOUT,
@@ -1337,7 +1353,8 @@ class Job:
                         self.append_log(filtered)
                         self.output.put(("log", filtered))
             self.returncode = self.proc.wait()
-            if self.returncode == 0 and self.status != "cancelled":
+            probe = self.needs_stream_selection
+            if self.returncode == 0 and not probe and self.status != "cancelled":
                 try:
                     apply_effective_resolution(self)
                 except Exception as exc:
@@ -1346,7 +1363,10 @@ class Job:
                     self.output.put(("log", message))
             with _jobs_lock:
                 if self.status != "cancelled":
-                    self.status = "done" if self.returncode == 0 else "failed"
+                    if probe and (self.returncode == 0 or any(self.streams.info().values())):
+                        self.status = "needs_selection"
+                    else:
+                        self.status = "done" if self.returncode == 0 else "failed"
                     self.finish_phase()
         except Exception as exc:
             message = f"[webserver] {type(exc).__name__}: {exc}\n"
@@ -1359,13 +1379,14 @@ class Job:
         finally:
             self.finished = time.time()
             self.close_log()
-            write_archived_info(self)
+            if self.status in ("done", "failed", "cancelled"):
+                write_archived_info(self)
             self.output.put(("end", None))
             pump_queue_once()
 
     def cancel(self):
         with _jobs_lock:
-            if self.status not in ("running", "queued"):
+            if self.status not in ("running", "queued", "needs_selection"):
                 return False
             self.status = "cancelled"
             self.finish_phase()
@@ -1475,7 +1496,12 @@ def enqueue_job(command, argv, queue=None, title_override=None):
             active = sum(1 for item in _jobs.values() if item.status == "running")
             if active >= MAX_CONCURRENT:
                 return None
-        job = Job(command, argv, title_override=title_override)
+        job = Job(
+            command,
+            argv,
+            title_override=title_override,
+            probe_streams=queue,
+        )
         if not queue:
             job.status = "running"
             job.phase = "initialiseren"
@@ -1554,12 +1580,12 @@ def clear_jobs():
         running_ids = {
             job_id
             for job_id, job in _jobs.items()
-            if job.status in ("running", "queued")
+            if job.status in ("running", "queued", "needs_selection")
         }
         _jobs = {
             job_id: job
             for job_id, job in _jobs.items()
-            if job.status in ("running", "queued")
+            if job.status in ("running", "queued", "needs_selection")
         }
         stale_paths = [
             path
@@ -1674,7 +1700,11 @@ def update_job_streams(job_id):
             selectors = {kind: data[kind] for kind in STREAM_OPTIONS if kind in data}
         if not selectors:
             return jsonify({"error": "Geen streamselecties opgegeven"}), 400
-        return jsonify(job.update_streams(selectors))
+        was_probe = job.status == "needs_selection"
+        info = job.update_streams(selectors)
+        if was_probe:
+            start_queue()
+        return jsonify(info)
     except RuntimeError as exc:
         return jsonify({"error": str(exc)}), 409
     except ValueError as exc:

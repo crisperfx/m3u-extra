@@ -34,6 +34,7 @@ function phaseLabel(job) {
 
 function statusClass(job) {
   if (!job) return '';
+  if (job.status === 'queued' || job.status === 'needs_selection') return 'warn';
   if (job.status === 'running') return job.phase === 'muxing' || job.phase === 'decrypting' ? 'warn' : 'active';
   if (job.status === 'done') return 'ok';
   if (job.status === 'failed') return 'err';

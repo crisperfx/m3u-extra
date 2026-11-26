@@ -24,6 +24,7 @@ let lastJobs = [];
 let editingJobId = null;
 const queueDrafts = {};
 const collapsedJobs = new Set();
+const jobStatuses = new Map();
 let healthOk = null;
 let healthKey = 'health.connecting';
 
@@ -35,7 +36,7 @@ function phaseLabel(job) {
 
 function statusClass(job) {
   if (!job) return '';
-  if (job.status === 'queued') return 'warn';
+  if (job.status === 'queued' || job.status === 'needs_selection') return 'warn';
   if (job.status === 'running') return job.phase === 'muxing' || job.phase === 'decrypting' ? 'warn' : 'active';
   if (job.status === 'done') return 'ok';
   if (job.status === 'failed') return 'err';
@@ -87,7 +88,16 @@ function renderJobs(jobs) {
 
     const top = document.createElement('div');
     top.className = 'job-top';
-    const collapsed = collapsedJobs.has(job.id) || job.status !== 'running';
+    if (!jobStatuses.has(job.id)) {
+      if (job.status !== 'running') collapsedJobs.add(job.id);
+      jobStatuses.set(job.id, job.status);
+    } else if (job.status === 'running' && jobStatuses.get(job.id) !== 'running') {
+      collapsedJobs.delete(job.id);
+      jobStatuses.set(job.id, job.status);
+    } else if (job.status !== jobStatuses.get(job.id)) {
+      jobStatuses.set(job.id, job.status);
+    }
+    const collapsed = collapsedJobs.has(job.id);
     const toggle = document.createElement('button');
     toggle.className = 'job-toggle';
     toggle.textContent = collapsed ? '▸' : '▾';
@@ -217,6 +227,12 @@ function buildQueueEditor(job) {
   heading.className = 'queue-editor-title';
   heading.textContent = T('edit.title');
   wrap.append(heading);
+  if (job.status === 'needs_selection') {
+    const probeHint = document.createElement('div');
+    probeHint.className = 'edit-hint';
+    probeHint.textContent = T('edit.probeHint');
+    wrap.append(probeHint);
+  }
 
   const hasTracks = QUEUE_FIELDS.some(([kind]) =>
     ((job.streams || {})[kind] || []).some(item => item.track != null));
@@ -326,11 +342,11 @@ function buildQueueEditor(job) {
 }
 
 function renderQueue(jobs) {
-  const queued = jobs.filter(job => job.status === 'queued');
-  queuePanel.hidden = queued.length === 0;
-  queueCount.textContent = queued.length ? `(${queued.length})` : '';
+  const waiting = jobs.filter(job => job.status === 'queued' || job.status === 'needs_selection');
+  queuePanel.hidden = waiting.length === 0;
+  queueCount.textContent = waiting.length ? `(${waiting.length})` : '';
   queueEl.innerHTML = '';
-  for (const job of queued) {
+  for (const job of waiting) {
     const li = document.createElement('li');
     li.className = 'queue-item';
     const row = document.createElement('div');
@@ -339,6 +355,9 @@ function renderQueue(jobs) {
     title.className = 'queue-title';
     title.textContent = job.title || job.command;
     title.title = job.command;
+    const phase = document.createElement('span');
+    phase.className = `job-phase chip ${statusClass(job)}`;
+    phase.textContent = phaseLabel(job);
     const editBtn = document.createElement('button');
     editBtn.className = 'btn tiny subtle';
     editBtn.textContent = T('action.editStreams');
@@ -346,7 +365,7 @@ function renderQueue(jobs) {
       editingJobId = editingJobId === job.id ? null : job.id;
       renderQueue(lastJobs);
     };
-    row.append(title, editBtn);
+    row.append(title, phase, editBtn);
     li.append(row);
     if (editingJobId === job.id) li.append(buildQueueEditor(job));
     queueEl.append(li);

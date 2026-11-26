@@ -307,6 +307,19 @@ class ArchiveTests(unittest.TestCase):
             stream = client.get(f"/api/jobs/{job.id}/stream").get_data(as_text=True)
         self.assertIn("Saved live line", stream)
 
+    def test_clear_history_preserves_probe_job_logs(self):
+        job = app_module.Job("N_m3u8DL-RE probe", ["N_m3u8DL-RE"], probe_streams=True)
+        job.status = "needs_selection"
+        app_module._jobs[job.id] = job
+        job.append_log("INFO : Selected streams\n")
+        self.addCleanup(app_module._jobs.pop, job.id, None)
+        self.addCleanup(lambda: app_module.log_file_path(job.id).unlink(missing_ok=True))
+        self.addCleanup(job.close_log)
+        with app_module.app.test_client() as client:
+            self.assertEqual(client.delete("/api/jobs").status_code, 200)
+        self.assertIn(job.id, app_module._jobs)
+        self.assertTrue(app_module.log_file_path(job.id).is_file())
+
     def test_clear_history_preserves_running_job_logs(self):
         job = app_module.Job("N_m3u8DL-RE running", ["N_m3u8DL-RE"])
         app_module._jobs[job.id] = job
@@ -484,6 +497,7 @@ class SettingsAndQueueTests(unittest.TestCase):
                 self.assertEqual(response.status_code, 201)
                 job = app_module._jobs[response.get_json()["id"]]
                 self.assertEqual(job.status, "queued")
+                self.assertTrue(job.needs_stream_selection)
                 launch.assert_not_called()
 
     def test_explicit_start_overrides_auto_start_false(self):
@@ -508,6 +522,7 @@ class SettingsAndQueueTests(unittest.TestCase):
                 self.assertEqual(response.status_code, 201)
                 job = app_module._jobs[response.get_json()["id"]]
                 self.assertEqual(job.status, "running")
+                self.assertFalse(job.needs_stream_selection)
                 launch.assert_called_once()
 
     def test_uploader_tag_is_appended_to_save_name(self):
@@ -656,6 +671,56 @@ class JobStreamEditTests(unittest.TestCase):
         self.assertNotIn("lang=eng -sa", result)
         self.assertNotIn("--select-subtitle", result)
 
+    def test_probe_run_waits_for_stream_selection(self):
+        command = 'N_m3u8DL-RE.exe "https://example.com/index.mpd"'
+        job = app_module.Job(command, ["N_m3u8DL-RE", "https://example.com/index.mpd"], probe_streams=True)
+        self.addCleanup(job.close_log)
+        self.addCleanup(lambda: app_module.log_file_path(job.id).unlink(missing_ok=True))
+
+        class FakeStdout:
+            def __iter__(self):
+                return iter([
+                    "INFO : Selected streams:\n",
+                    "INFO : Vid Original | 1280x720 | 4528 Kbps | 1 | dvh1.05.02 | 358 Segments | Main | ~22m52s\n",
+                ])
+
+        class FakeProc:
+            stdout = FakeStdout()
+
+            def wait(self):
+                return 0
+
+        with (
+            mock.patch.object(app_module.subprocess, "Popen", return_value=FakeProc()) as popen,
+            mock.patch.object(app_module, "pump_queue_once"),
+            mock.patch.object(app_module, "write_archived_info"),
+        ):
+            job._run()
+        self.assertIn("--skip-download", popen.call_args.args[0])
+        self.assertEqual(job.status, "needs_selection")
+        self.assertEqual(job.streams.info()["video"][0]["track"], "1")
+
+    def test_probe_argv_adds_skip_download_once(self):
+        argv = ["N_m3u8DL-RE", "https://example.com/index.mpd"]
+        self.assertEqual(
+            app_module.probe_argv(argv),
+            ["N_m3u8DL-RE", "https://example.com/index.mpd", "--skip-download"],
+        )
+        self.assertEqual(
+            app_module.probe_argv(argv + ["--skip-download"]),
+            argv + ["--skip-download"],
+        )
+
+    def test_update_streams_from_probe_queues_job(self):
+        command = 'N_m3u8DL-RE.exe "https://example.com/index.mpd"'
+        job = app_module.Job(command, ["N_m3u8DL-RE", "https://example.com/index.mpd"], probe_streams=True)
+        job.status = "needs_selection"
+        with mock.patch.object(app_module, "fetch_manifest_text", return_value=None):
+            info = job.update_streams({"audio": "id=^(15)$:for=all"})
+        self.assertEqual(info["status"], "queued")
+        self.assertEqual(job.status, "queued")
+        self.assertFalse(job.needs_stream_selection)
+
     def test_selector_for_tracks_builds_id_regex(self):
         self.assertEqual(
             app_module.selector_for_tracks(["10", "2", "10"]),
@@ -696,6 +761,28 @@ class JobStreamEditTests(unittest.TestCase):
         info = response.get_json()
         self.assertEqual(info["selectors"], {"video": "lang=nld"})
         self.assertEqual(job.status, "queued")
+
+    def test_edit_streams_endpoint_restarts_probe_job(self):
+        command = 'N_m3u8DL-RE.exe "https://example.com/index.mpd"'
+        job = app_module.Job(
+            command,
+            ["N_m3u8DL-RE", "https://example.com/index.mpd"],
+            probe_streams=True,
+        )
+        job.status = "needs_selection"
+        job.phase = "needsSelection"
+        with (
+            mock.patch.object(app_module, "_jobs", {job.id: job}),
+            mock.patch.object(app_module, "fetch_manifest_text", return_value=None),
+            mock.patch.object(app_module, "start_queue") as start,
+        ):
+            response = app_module.app.test_client().post(
+                f"/api/jobs/{job.id}/streams",
+                json={"tracks": {"audio": ["15"]}},
+            )
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(job.status, "queued")
+        start.assert_called_once()
 
     def test_edit_streams_endpoint_rejects_running_job(self):
         job = app_module.Job("N_m3u8DL-RE", ["N_m3u8DL-RE"])
@@ -812,9 +899,27 @@ class StaticAssetTests(unittest.TestCase):
         js = app_module.STATIC_DIR.joinpath("app.js").read_text(encoding="utf-8")
         css = app_module.STATIC_DIR.joinpath("style.css").read_text(encoding="utf-8")
         self.assertIn("collapsedJobs", js)
+        self.assertIn("jobStatuses", js)
+        self.assertNotIn("collapsedJobs.has(job.id) || job.status !== 'running'", js)
         self.assertIn("job-toggle", js)
         self.assertIn("job-details", js)
         self.assertIn(".job-details[hidden]", css)
+
+    def test_extension_command_uses_metadata_title(self):
+        root = Path(app_module.__file__).resolve().parent
+        history = root.joinpath("extension/src/ui/history.min.js").read_text(encoding="utf-8")
+        popup = root.joinpath("extension/src/ui/popup.min.js").read_text(encoding="utf-8")
+        self.assertIn("metaName=e&&e.meta?wp2Name(e)", history)
+        self.assertIn("metaName=e&&e.meta?wp2Name(e)", popup)
+        self.assertIn('"manifest"!==titleName.toLowerCase()', history)
+        self.assertIn('"manifest"!==titleName.toLowerCase()', popup)
+
+    def test_probe_queue_ui_present(self):
+        js = app_module.STATIC_DIR.joinpath("app.js").read_text(encoding="utf-8")
+        i18n = app_module.STATIC_DIR.joinpath("i18n.js").read_text(encoding="utf-8")
+        self.assertIn("job.status === 'needs_selection'", js)
+        self.assertIn("edit.probeHint", js)
+        self.assertIn("phase.needsSelection", i18n)
 
 
 if __name__ == "__main__":
