@@ -481,6 +481,26 @@ class DecryptionKeyTests(unittest.TestCase):
         )
         self.assertEqual(result["video"], "id=^(3)$:for=all")
 
+    def test_filter_selectors_picks_best_decryptable_video(self):
+        streams = [
+            app_module.parse_stream_line(
+                "Vid Original | 1920x1080 | 8000 Kbps | 1 | avc1.640028 | 358 Segments"
+            ),
+            app_module.parse_stream_line(
+                "Vid Original | 1280x720 | 4528 Kbps | 3 | avc1.4d401f | 358 Segments"
+            ),
+            app_module.parse_stream_line(
+                "Vid Original | 960x540 | 2365 Kbps | 5 | avc1.4d401f | 358 Segments"
+            ),
+        ]
+        result = app_module.filter_selectors_by_keys(
+            {"video": "res=^1920x"},
+            {"video": streams},
+            {"1": {self.KID_ONE}, "3": {self.KID_TWO}, "5": {self.KID_TWO}},
+            {self.KID_TWO},
+        )
+        self.assertEqual(result["video"], "id=^(3)$:for=all")
+
 
 class TitleMetadataTests(unittest.TestCase):
     def test_series_title_from_meta(self):

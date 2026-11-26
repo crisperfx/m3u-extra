@@ -16,7 +16,7 @@ from urllib.parse import parse_qsl, urlencode, urlparse, urlsplit, urlunsplit
 from flask import Flask, Response, abort, jsonify, render_template, request, send_file
 
 APP_DIR = Path(__file__).resolve().parent
-APP_VERSION = "1.2.40"
+APP_VERSION = "1.2.41"
 STATIC_DIR = APP_DIR / "static"
 DOWNLOAD_DIR = Path(os.environ.get("DOWNLOAD_DIR", "/downloads")).resolve()
 NDL_BINARY = os.environ.get("NDL_BINARY", "/usr/local/bin/N_m3u8DL-RE")
@@ -488,6 +488,19 @@ def stream_is_non_dv(stream):
 def stream_bitrate(stream):
     match = STREAM_BITRATE_PATTERN.search(stream_text(stream))
     return float(match.group(1)) if match else 0.0
+
+
+def stream_resolution_pixels(stream):
+    text = f"{stream.get('resolution') or ''} {stream_text(stream)}"
+    match = RESOLUTION_PATTERN.search(text)
+    if not match:
+        return 0
+    width, height = re.split(r"[xX]", match.group(1))
+    return int(width) * int(height)
+
+
+def best_stream(streams):
+    return max(streams, key=lambda item: (stream_resolution_pixels(item), stream_bitrate(item)))
 
 
 def prefer_non_dv_selectors(selectors, video_streams, selected_streams=None):
@@ -1265,13 +1278,14 @@ def filter_selectors_by_keys(selectors, available_streams, kid_map, key_kids):
         current = result.get(kind)
         if current:
             chosen = selected_track_ids(current)
-            if chosen:
-                kept = [value for value in supported_ids if value in chosen]
-                if kept and len(kept) == len(chosen):
-                    continue
-                if kept:
-                    result[kind] = selector_for_tracks(kept)
-                    continue
+            if chosen and all(value in supported_ids for value in chosen):
+                continue
+        if kind == "video":
+            best = best_stream(supported)
+            best_id = str(best.get("track") or "").strip()
+            if best_id:
+                result[kind] = selector_for_tracks([best_id])
+                continue
         result[kind] = selector_for_tracks(supported_ids)
     return result
 
