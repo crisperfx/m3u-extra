@@ -1,3 +1,4 @@
+import base64
 import json
 import os
 import queue
@@ -16,7 +17,7 @@ from urllib.parse import parse_qsl, urlencode, urlparse, urlsplit, urlunsplit
 from flask import Flask, Response, abort, jsonify, render_template, request, send_file
 
 APP_DIR = Path(__file__).resolve().parent
-APP_VERSION = "1.2.37"
+APP_VERSION = "1.2.38"
 STATIC_DIR = APP_DIR / "static"
 DOWNLOAD_DIR = Path(os.environ.get("DOWNLOAD_DIR", "/downloads")).resolve()
 NDL_BINARY = os.environ.get("NDL_BINARY", "/usr/local/bin/N_m3u8DL-RE")
@@ -1107,6 +1108,94 @@ def local_name(tag):
     return tag.rsplit("}", 1)[-1]
 
 
+def normalize_kid(value):
+    if not value:
+        return None
+    kid = str(value).strip().lower()
+    if kid.startswith("urn:uuid:"):
+        kid = kid[len("urn:uuid:") :]
+    kid = kid.replace("-", "")
+    return kid if re.fullmatch(r"[0-9a-f]{32}", kid) else None
+
+
+def pssh_widevine_kids(value):
+    if not value or not isinstance(value, str):
+        return []
+    try:
+        data = base64.b64decode("".join(value.split()) + "=" * (-len("".join(value.split())) % 4), validate=True)
+    except (ValueError, TypeError):
+        return []
+    if data[4:8] == b"pssh":
+        version = data[8] if len(data) > 8 else 0
+        offset = 28
+        if version and len(data) >= offset + 4:
+            count = int.from_bytes(data[offset : offset + 4], "big")
+            offset += 4 + count * 16
+        if len(data) >= offset + 4:
+            size = int.from_bytes(data[offset : offset + 4], "big")
+            offset += 4
+            data = data[offset : offset + size]
+    return [match.group(1).hex() for match in re.finditer(rb"\x12\x10(.{16})", data, re.S)]
+
+
+def parse_manifest_kid_aliases(text):
+    if not text:
+        return []
+    try:
+        root = ET.fromstring(text)
+    except ET.ParseError:
+        return []
+    parents = {child: parent for parent in root.iter() for child in parent}
+    groups = {}
+    for element in root.iter():
+        if local_name(element.tag) != "ContentProtection":
+            continue
+        groups.setdefault(parents.get(element, root), []).append(element)
+    aliases = []
+    for parent, elements in groups.items():
+        default_kids = []
+        widevine_kids = []
+        for element in [parent, *elements]:
+            for name, value in element.attrib.items():
+                if local_name(name) == "default_KID":
+                    kid = normalize_kid(value)
+                    if kid and kid not in default_kids:
+                        default_kids.append(kid)
+            scheme = str(element.get("schemeIdUri", "")).lower()
+            if "edef8ba9-79d6-4ace-a3c8-27dcd51d21ed" not in scheme:
+                continue
+            for child in element.iter():
+                value = child.text if local_name(child.tag) == "pssh" else child.get("pssh")
+                for kid in pssh_widevine_kids(value):
+                    if kid not in widevine_kids:
+                        widevine_kids.append(kid)
+        for source in widevine_kids:
+            for target in default_kids:
+                if source != target:
+                    aliases.append((source, target))
+    return list(dict.fromkeys(aliases))
+
+
+def detect_manifest_kid_aliases(tokens):
+    if not any(token == "--key" or token.startswith("--key=") for token in tokens):
+        return []
+    headers = extract_headers(tokens)
+    aliases = []
+    sources = []
+    for candidate in manifest_urls(tokens):
+        path = urlparse(candidate).path if "://" in candidate else candidate
+        if path.lower().endswith(".mpd") and candidate not in sources:
+            sources.append(candidate)
+    outer = find_manifest_input(tokens)
+    if outer and outer not in sources:
+        sources.append(outer)
+    for source in sources:
+        for alias in parse_manifest_kid_aliases(fetch_manifest_text(source, headers)):
+            if alias not in aliases:
+                aliases.append(alias)
+    return aliases
+
+
 def parse_manifest_resolution(text):
     if not text:
         return None
@@ -1303,17 +1392,22 @@ def normalize_mkv_muxer(args):
     return result
 
 
-def normalize_decryption_keys(tokens):
+def normalize_decryption_keys(tokens, alias_pairs=None):
     key_values = []
     result = []
+    insert_at = None
     index = 0
     while index < len(tokens):
         token = tokens[index]
         if token == "--key" and index + 1 < len(tokens):
+            if insert_at is None:
+                insert_at = len(result)
             key_values.append(tokens[index + 1])
             index += 2
             continue
         if token.startswith("--key="):
+            if insert_at is None:
+                insert_at = len(result)
             key_values.append(token[len("--key=") :])
             index += 1
             continue
@@ -1321,13 +1415,37 @@ def normalize_decryption_keys(tokens):
         index += 1
     if not key_values:
         return list(tokens)
+    entries = list(key_values)
+    if alias_pairs:
+        extra = []
+        for value in entries:
+            if ":" not in value:
+                continue
+            source_raw, material = value.split(":", 1)
+            source = normalize_kid(source_raw)
+            if not source or not material:
+                continue
+            for alias_source, target in alias_pairs:
+                if source == alias_source and target != source:
+                    extra.append(f"{target}:{material}")
+        entries = list(dict.fromkeys(entries + extra))
     materials = []
-    for value in key_values:
+    for value in entries:
         material = value.split(":", 1)[-1] if ":" in value else value
         if not material:
             return list(tokens)
         materials.append(material)
     unique = list(dict.fromkeys(materials))
+    if alias_pairs:
+        if len(unique) == 1:
+            pairs = ["--key", unique[0]]
+        else:
+            pairs = []
+            for value in entries:
+                pairs += ["--key", value]
+        output = list(result)
+        output[insert_at:insert_at] = pairs
+        return output
     if len(unique) != 1:
         return list(tokens)
     return result + ["--key", unique[0]]
@@ -1365,7 +1483,7 @@ def parse_command(raw, title_override=None):
     args = sanitize_manifest_filters(args)
     args = inject_dash_ad_filters(args)
     args = normalize_mkv_muxer(args)
-    args = normalize_decryption_keys(args)
+    args = normalize_decryption_keys(args, detect_manifest_kid_aliases(args))
     args = drop_dv_video_if_alternative(args)
 
     base_dir = safe_dir(save_dir_raw)
