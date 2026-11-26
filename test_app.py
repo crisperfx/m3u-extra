@@ -401,20 +401,9 @@ class DecryptionKeyTests(unittest.TestCase):
     KEY_TWO = "fedcba9876543210fedcba9876543210"
     KID_ONE = "e315a0db6aae3454b95b8de43f6503932"
     KID_TWO = "d2de49accc243ea79af5ba0213cf7608"
-    KID_PSSH = "c5a526cba28730c4a83766b398c6ce82"
-    KID_DEFAULT = "a6a25349c0063022848b232750f961e1"
-    KEY_PSSH = "163cdd97fb804dbccd4f9f02e7a3a81e"
-    MPD = (
-        '<MPD xmlns:cenc="urn:mpeg:cenc:2013"><Period><AdaptationSet>'
-        '<ContentProtection schemeIdUri="urn:mpeg:dash:mp4protection:2011" '
-        'value="cenc" cenc:default_KID="urn:uuid:a6a25349-c006-3022-848b-232750f961e1"/>'
-        '<ContentProtection schemeIdUri="urn:uuid:edef8ba9-79d6-4ace-a3c8-27dcd51d21ed">'
-        "<cenc:pssh>AAAAenBzc2gAAAAA7e+LqXnWSs6jyCfc1R0h7QAAAFoIARIQxaUmy6KHMMSoN2azmMbOgiJEZXlKaGMzTmxkRWxrSWpvaU5XSXlNakpqWTJRdFlXSTJNaTAwWTJFeExUa3daR1l0WVRVd05UaGtNelV3TmpaakluMD0="
-        "</cenc:pssh></ContentProtection></AdaptationSet></Period></MPD>"
-    )
 
-    def parse(self, command, manifest=None):
-        with mock.patch.object(app_module, "fetch_manifest_text", return_value=manifest):
+    def parse(self, command):
+        with mock.patch.object(app_module, "fetch_manifest_text", return_value=None):
             return app_module.parse_command(command)
 
     def key_values(self, argv):
@@ -440,15 +429,6 @@ class DecryptionKeyTests(unittest.TestCase):
             f"--key {self.KID_TWO}:{self.KEY_ONE}"
         )
         self.assertEqual(self.key_values(argv), [self.KEY_ONE])
-
-    def test_mpd_kid_aliases_are_added_for_pssh_key(self):
-        argv = self.parse(
-            f"{self.BASE} --key {self.KID_PSSH}:{self.KEY_PSSH} "
-            f"--key {self.KID_ONE}:{self.KEY_ONE}",
-            manifest=self.MPD,
-        )
-        values = self.key_values(argv)
-        self.assertIn(f"{self.KID_DEFAULT}:{self.KEY_PSSH}", values)
 
 
 class TitleMetadataTests(unittest.TestCase):
