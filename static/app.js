@@ -293,12 +293,13 @@ function buildQueueEditor(job) {
         const box = document.createElement('input');
         box.type = 'checkbox';
         box.checked = !!draft.all[kind] || draft.tracks[kind].includes(id);
-        box.disabled = !!draft.all[kind];
         box.onchange = () => {
-          const values = new Set(draft.tracks[kind]);
+          const values = new Set(draft.all[kind] ? items.map(item => String(item.track)) : draft.tracks[kind]);
+          draft.all[kind] = false;
           if (box.checked) values.add(id); else values.delete(id);
           draft.tracks[kind] = [...values];
           queueDrafts[job.id] = draft;
+          renderQueue(lastJobs);
         };
         const text = document.createElement('span');
         text.textContent = streamDisplay(kind, item);

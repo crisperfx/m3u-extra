@@ -16,7 +16,7 @@ from urllib.parse import parse_qsl, urlencode, urlparse, urlsplit, urlunsplit
 from flask import Flask, Response, abort, jsonify, render_template, request, send_file
 
 APP_DIR = Path(__file__).resolve().parent
-APP_VERSION = "1.2.39"
+APP_VERSION = "1.2.40"
 STATIC_DIR = APP_DIR / "static"
 DOWNLOAD_DIR = Path(os.environ.get("DOWNLOAD_DIR", "/downloads")).resolve()
 NDL_BINARY = os.environ.get("NDL_BINARY", "/usr/local/bin/N_m3u8DL-RE")
@@ -450,7 +450,7 @@ def selector_for_tracks(tracks):
         value = str(item).strip()
         if not value:
             continue
-        if not re.fullmatch(r"[A-Za-z0-9_=-]+", value):
+        if not re.fullmatch(r"[A-Za-z0-9_ =.-]+", value):
             raise ValueError("Ongeldig stream-id")
         if value not in values:
             values.append(value)
@@ -464,7 +464,11 @@ def selected_track_ids(value):
     match = re.search(r"id=(?:\^\()?([^):]+)", str(value or ""), re.I)
     if not match:
         return set()
-    return {item for item in re.findall(r"[A-Za-z0-9_=-]+", match.group(1)) if item}
+    return {
+        item.strip().replace("\\ ", " ")
+        for item in match.group(1).split("|")
+        if item.strip().replace("\\ ", " ")
+    }
 
 
 def stream_text(stream):
@@ -759,6 +763,8 @@ def looks_like_track_id(text):
     if value.upper().endswith("CH"):
         return False
     if TRACK_HINT_PATTERN.match(value):
+        return True
+    if re.fullmatch(r"[^=|]+=\d+", value):
         return True
     return bool(re.fullmatch(r"[A-Za-z0-9_=-]*[_-][A-Za-z0-9_=-]*", value))
 

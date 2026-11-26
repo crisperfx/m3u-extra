@@ -74,6 +74,16 @@ class StreamParsingTests(unittest.TestCase):
         self.assertEqual(parsed["track"], "7")
         self.assertNotIn("eng", parsed["details"])
 
+    def test_parse_named_audio_track_ids(self):
+        main = app_module.parse_stream_line(
+            "Aud*CENC Nederlands=96001 | 96 Kbps | mp4a.40.2 | nl | 2CH | 705 Segments | Main | ~23m29s"
+        )
+        description = app_module.parse_stream_line(
+            "Aud*CENC Nederlandse descriptie=96001 | 96 Kbps | mp4a.40.2 | nl | 2CH | 705 Segments | Alternate | ~23m29s"
+        )
+        self.assertEqual(main["track"], "Nederlands=96001")
+        self.assertEqual(description["track"], "Nederlandse descriptie=96001")
+
     def test_parse_subtitle_line(self):
         parsed = app_module.parse_stream_line(SAMPLE_LOG.splitlines()[4])
         self.assertEqual(parsed["kind"], "subtitle")
@@ -980,6 +990,15 @@ class JobStreamEditTests(unittest.TestCase):
             "id=^(2|10)$:for=all",
         )
         self.assertEqual(app_module.selector_for_tracks([]), "for=all")
+
+    def test_selector_for_tracks_accepts_named_ids(self):
+        selector = app_module.selector_for_tracks(
+            ["Nederlandse descriptie=96001", "Nederlands=96001"]
+        )
+        self.assertEqual(
+            app_module.selected_track_ids(selector),
+            {"Nederlandse descriptie=96001", "Nederlands=96001"},
+        )
 
     def test_edit_streams_endpoint_accepts_tracks(self):
         command = 'N_m3u8DL-RE.exe "https://example.com/index.mpd"'
