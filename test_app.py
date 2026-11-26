@@ -1175,8 +1175,14 @@ class StaticAssetTests(unittest.TestCase):
         i18n = app_module.STATIC_DIR.joinpath("i18n.js").read_text(encoding="utf-8")
         self.assertEqual(html.count('class="options-group"'), 4)
         self.assertIn('class="options-actions"', html)
+        self.assertIn('data-i18n="options.subtitle">Instellingen</span>', html)
+        self.assertIn('class="option-item', html)
+        self.assertIn('class="toggle"', html)
+        self.assertNotIn('class="switch option-switch"', html)
         self.assertIn(".options-group", css)
         self.assertIn(".group-hint", css)
+        self.assertIn(".option-item", css)
+        self.assertIn(".toggle", css)
         for control in (
             "folderMovies",
             "folderSeries",

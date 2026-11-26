@@ -29,7 +29,7 @@
     <section class="panel">
       <div class="panel-head">
         <div>
-          <span class="eyebrow" data-i18n="options.groupNames">Namen</span>
+          <span class="eyebrow" data-i18n="options.subtitle">Instellingen</span>
           <h2 data-i18n="options.title">Opties</h2>
         </div>
       </div>
@@ -37,53 +37,49 @@
         <section class="options-group">
           <h3 data-i18n="options.groupNames">Bestandsnaam</h3>
           <p class="group-hint" data-i18n="options.groupNamesHelp">Bepalen de naam van het gemuxte bestand.</p>
-          <label class="field-col" for="uploaderTag">
-            <span class="minilabel" data-i18n="options.uploader">Uploader-tag</span>
+          <div class="option-item column">
+            <label class="option-label" for="uploaderTag" data-i18n="options.uploader">Uploader-tag</label>
             <input type="text" id="uploaderTag" class="text-box" maxlength="40" data-i18n-placeholder="options.uploaderPlaceholder" placeholder="bijv. YTS">
             <small data-i18n="options.uploaderHelp">Komt achter de titel, bijvoorbeeld: The Odyssey (2026) 1080p YTS</small>
-          </label>
-          <label class="switch option-switch" for="resolutionTag">
-            <input type="checkbox" id="resolutionTag" checked>
-            <span data-i18n="options.resolution">Resolutie automatisch toevoegen</span>
-          </label>
+          </div>
+          <div class="option-item">
+            <label class="option-label" for="resolutionTag" data-i18n="options.resolution">Resolutie automatisch toevoegen</label>
+            <input type="checkbox" id="resolutionTag" class="toggle" checked>
+          </div>
         </section>
         <section class="options-group">
           <h3 data-i18n="options.folderGroup">Mappen na muxing</h3>
           <p class="group-hint" data-i18n="options.folderGroupHelp">Kies welke soorten in een eigen map komen.</p>
-          <div class="option-row">
-            <label class="switch option-switch" for="folderMovies">
-              <input type="checkbox" id="folderMovies" checked>
-              <span data-i18n="options.folderMovies">Films in map met titel</span>
-            </label>
-            <small data-i18n="options.folderMoviesHelp">Mapnaam zonder uploader-tag en resolutie.</small>
+          <div class="option-item">
+            <label class="option-label" for="folderMovies" data-i18n="options.folderMovies">Films in map met titel</label>
+            <input type="checkbox" id="folderMovies" class="toggle" checked>
+            <small data-i18n="options.folderMoviesHelp">Aan: de filmtitel wordt de mapnaam.</small>
           </div>
-          <div class="option-row">
-            <label class="switch option-switch" for="folderSeries">
-              <input type="checkbox" id="folderSeries">
-              <span data-i18n="options.folderSeries">Series in map met titel</span>
-            </label>
+          <div class="option-item">
+            <label class="option-label" for="folderSeries" data-i18n="options.folderSeries">Series in map met titel</label>
+            <input type="checkbox" id="folderSeries" class="toggle">
             <small data-i18n="options.folderSeriesHelp">Uit: series-bestanden komen direct in /downloads terecht.</small>
           </div>
         </section>
         <section class="options-group">
           <h3 data-i18n="options.folderNames">Mapnaam-opties</h3>
           <p class="group-hint" data-i18n="options.folderNamesHelp">Alleen voor de map; het bestand behoudt uploader-tag en resolutie.</p>
-          <label class="switch option-switch" for="folderUploaderTag">
-            <input type="checkbox" id="folderUploaderTag">
-            <span data-i18n="options.folderUploaderTag">Uploader-tag in mapnaam</span>
-          </label>
-          <label class="switch option-switch" for="folderResolutionTag">
-            <input type="checkbox" id="folderResolutionTag">
-            <span data-i18n="options.folderResolutionTag">Resolutie in mapnaam</span>
-          </label>
+          <div class="option-item">
+            <label class="option-label" for="folderUploaderTag" data-i18n="options.folderUploaderTag">Uploader-tag in mapnaam</label>
+            <input type="checkbox" id="folderUploaderTag" class="toggle">
+          </div>
+          <div class="option-item">
+            <label class="option-label" for="folderResolutionTag" data-i18n="options.folderResolutionTag">Resolutie in mapnaam</label>
+            <input type="checkbox" id="folderResolutionTag" class="toggle">
+          </div>
         </section>
         <section class="options-group">
           <h3 data-i18n="options.groupStart">Startgedrag</h3>
-          <label class="switch option-switch" for="autoStart">
-            <input type="checkbox" id="autoStart" checked>
-            <span data-i18n="options.autoStart">Downloads direct starten</span>
-          </label>
-          <small data-i18n="options.autoStartHelp">Uit: nieuwe downloads gaan naar de wachtrij en starten pas via Wachtrij starten.</small>
+          <div class="option-item">
+            <label class="option-label" for="autoStart" data-i18n="options.autoStart">Downloads direct starten</label>
+            <input type="checkbox" id="autoStart" class="toggle" checked>
+            <small data-i18n="options.autoStartHelp">Uit: nieuwe downloads gaan naar de wachtrij en starten pas via Wachtrij starten.</small>
+          </div>
         </section>
         <div class="options-actions">
           <p id="error" class="error"></p>

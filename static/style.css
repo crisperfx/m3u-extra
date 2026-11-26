@@ -87,13 +87,14 @@ body {
 .text-box:focus { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(124, 140, 255, .16); }
 .options-form { display: grid; gap: 14px; }
 .options-form small { color: var(--muted); font-size: 12px; }
-.options-group { display: grid; gap: 10px; padding: 14px; border: 1px solid var(--line); border-radius: 12px; background: rgba(6, 10, 20, .32); }
-.options-group h3 { margin: 0; font-size: 13px; letter-spacing: .01em; }
-.group-hint { margin: -4px 0 2px; color: var(--muted); font-size: 12px; }
-.option-row { display: grid; gap: 4px; }
-.field-col { display: grid; gap: 6px; }
-.minilabel { display: block; font-size: 11px; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); }
-.option-switch { margin-left: 0; }
+.options-group { display: grid; gap: 12px; padding: 14px 16px; border: 1px solid var(--line); border-radius: 12px; background: rgba(6, 10, 20, .32); }
+.options-group h3 { margin: 0; font-size: 14px; letter-spacing: .01em; }
+.group-hint { margin: -8px 0 0; color: var(--muted); font-size: 12px; }
+.option-item { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 8px 12px; }
+.option-item.column { grid-template-columns: 1fr; gap: 6px; }
+.option-label { font-size: 13px; cursor: pointer; }
+.option-item small { grid-column: 1 / -1; margin-top: -4px; }
+.toggle { width: 18px; height: 18px; accent-color: var(--accent); cursor: pointer; justify-self: end; }
 .options-actions { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
 .options-actions .error { flex: 1 1 100%; margin: 0; }
 .saved { color: var(--ok); font-size: 12px; min-height: 16px; margin: 0; }
