@@ -117,6 +117,7 @@ h1 {
 .version-stack .version { margin-left: 0; }
 .version-stack .head-btn { margin-left: 0 !important; }
 .version.active { color: var(--ok); }
+.version.scripts { color: var(--ok); }
 .version.available { flex-basis: 100%; color: var(--accent); }
 
 .state {

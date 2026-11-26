@@ -67,12 +67,12 @@ For the browser extension, set the server URL to the address you use to open the
 
 The modified extension is included in `extension/`:
 
-- `WidevineProxy2-1.2.43.crx` — drag this file onto `chrome://extensions` with Developer mode enabled.
-- `WidevineProxy2-1.2.43.zip` — unpack it, then use **Load unpacked** and select the extracted folder (the one containing `manifest.json`).
+- `WidevineProxy2-1.2.44.crx` — drag this file onto `chrome://extensions` with Developer mode enabled.
+- `WidevineProxy2-1.2.44.zip` — unpack it, then use **Load unpacked** and select the extracted folder (the one containing `manifest.json`).
 
 The source files are in `extension/src`. The server URL and token are not hardcoded; open the extension options and enter them yourself. The manifest contains a fixed public key, so unpacked installs keep the same extension ID and keep these settings on later updates.
 
-The popup shows the effective script version as **Active** (the cached live scripts, or the Chrome-installed version when no newer live scripts were applied) and the newest `extension/src` version from GitHub as **Version Available**. The installed Chrome version stays visible in the Active tooltip. The **Update** button fetches the latest scripts from this GitHub repository, reloads the active page and updates Active, so no extension reinstall is needed. If GitHub is unreachable, **Version Available** shows `unknown` and the bundled scripts are used.
+The popup shows the installed Chrome package as **Active**, the effective script version as **Scripts** (the cached live scripts, or the bundled scripts when no newer live scripts were applied), and the newest `extension/src` version from GitHub as **Version Available**. The **Update** button fetches the latest scripts from this GitHub repository, reloads the active page, and shows the fetched version in **Scripts** and briefly on the button, so no extension reinstall is needed for script changes. Chrome cannot replace its own popup/background from JavaScript, so package changes still require installing a new CRX. If GitHub is unreachable, **Version Available** shows `unknown` and the bundled scripts are used.
 
 ### What to fill in
 
