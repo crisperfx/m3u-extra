@@ -113,6 +113,12 @@ body {
 }
 .queue-field input:focus { border-color: var(--accent); box-shadow: 0 0 0 2px rgba(124, 140, 255, .16); }
 .queue-actions { display: flex; gap: 8px; margin-top: 10px; }
+.edit-hint { color: var(--muted); font-size: 11px; margin-bottom: 8px; }
+.track-group { margin-top: 8px; }
+.track-group-title { color: var(--accent-2); font-size: 10px; letter-spacing: .12em; text-transform: uppercase; margin-bottom: 4px; }
+.track-row { display: flex; align-items: center; gap: 8px; padding: 3px 0; font-size: 11px; cursor: pointer; }
+.track-row input { accent-color: var(--accent); }
+.track-row span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 textarea {
   width: 100%; min-height: 145px; resize: vertical;
@@ -198,6 +204,9 @@ pre {
 .list li.empty { color: var(--muted); text-align: center; }
 
 .job-top { display: flex; align-items: center; gap: 10px; }
+.job-toggle { flex: 0 0 auto; width: 18px; height: 18px; padding: 0; border: 0; background: none; color: var(--muted); cursor: pointer; font-size: 13px; line-height: 1; }
+.job-toggle:hover { color: var(--accent-2); }
+.job-details[hidden] { display: none; }
 .job-title { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; }
 .job-phase { font-size: 11px; color: var(--accent-2); white-space: nowrap; }
 .job-pct { font-size: 11px; color: var(--muted); font-variant-numeric: tabular-nums; white-space: nowrap; }

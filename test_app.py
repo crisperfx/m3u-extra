@@ -55,7 +55,15 @@ class StreamParsingTests(unittest.TestCase):
         parsed = app_module.parse_stream_line(SAMPLE_LOG.splitlines()[1])
         self.assertEqual(parsed["kind"], "video")
         self.assertEqual(parsed["resolution"], "1920x1080")
+        self.assertEqual(parsed["track"], "2")
         self.assertIn("avc1.640028", parsed["details"])
+
+    def test_parse_video_line_with_name_before_resolution(self):
+        parsed = app_module.parse_stream_line(
+            "Vid Original | 1280x720 | 4528 Kbps | 1 | dvh1.05.02 | 358 Segments | Main | ~22m52s"
+        )
+        self.assertEqual(parsed["resolution"], "1280x720")
+        self.assertEqual(parsed["track"], "1")
 
     def test_parse_audio_line(self):
         parsed = app_module.parse_stream_line(SAMPLE_LOG.splitlines()[2])
@@ -648,6 +656,30 @@ class JobStreamEditTests(unittest.TestCase):
         self.assertNotIn("lang=eng -sa", result)
         self.assertNotIn("--select-subtitle", result)
 
+    def test_selector_for_tracks_builds_id_regex(self):
+        self.assertEqual(
+            app_module.selector_for_tracks(["10", "2", "10"]),
+            "id=^(2|10)$:for=all",
+        )
+        self.assertEqual(app_module.selector_for_tracks([]), "for=all")
+
+    def test_edit_streams_endpoint_accepts_tracks(self):
+        command = 'N_m3u8DL-RE.exe "https://example.com/index.mpd"'
+        job = app_module.Job(command, ["N_m3u8DL-RE", "https://example.com/index.mpd"])
+        with (
+            mock.patch.object(app_module, "_jobs", {job.id: job}),
+            mock.patch.object(app_module, "fetch_manifest_text", return_value=None),
+        ):
+            response = app_module.app.test_client().post(
+                f"/api/jobs/{job.id}/streams",
+                json={"tracks": {"audio": ["15", "16"], "subtitle": []}},
+            )
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(
+            response.get_json()["selectors"],
+            {"audio": "id=^(15|16)$:for=all", "subtitle": "for=all"},
+        )
+
     def test_edit_streams_endpoint_updates_queued_job(self):
         command = 'N_m3u8DL-RE.exe "https://example.com/index.mpd" -sv lang=eng'
         job = app_module.Job(command, ["N_m3u8DL-RE", "-sv", "lang=eng"])
@@ -767,6 +799,22 @@ class StaticAssetTests(unittest.TestCase):
         self.assertIn("bottom: calc(84px", css)
         self.assertIn("backdrop-filter: none", css)
         self.assertIn("z-index: 60", css)
+
+    def test_queue_track_editor_present(self):
+        js = app_module.STATIC_DIR.joinpath("app.js").read_text(encoding="utf-8")
+        css = app_module.STATIC_DIR.joinpath("style.css").read_text(encoding="utf-8")
+        self.assertIn("mode: 'tracks'", js)
+        self.assertIn("box.type = 'checkbox'", js)
+        self.assertIn("draft.tracks[kind]", js)
+        self.assertIn(".track-row", css)
+
+    def test_jobs_are_collapsible(self):
+        js = app_module.STATIC_DIR.joinpath("app.js").read_text(encoding="utf-8")
+        css = app_module.STATIC_DIR.joinpath("style.css").read_text(encoding="utf-8")
+        self.assertIn("collapsedJobs", js)
+        self.assertIn("job-toggle", js)
+        self.assertIn("job-details", js)
+        self.assertIn(".job-details[hidden]", css)
 
 
 if __name__ == "__main__":

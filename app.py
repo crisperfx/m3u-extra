@@ -252,6 +252,7 @@ DASH_AD_PERIOD_REGEX = (
 )
 DASH_AD_URL_KEYWORD = r"dai\.google\.com/segments/redirect"
 AD_PERIOD_PATTERN = re.compile(DASH_AD_PERIOD_REGEX, re.I)
+TRACK_HINT_PATTERN = re.compile(r"^(?:video|audio|stream|text|sub)[A-Za-z0-9_=:-]*$", re.I)
 
 
 @app.before_request
@@ -377,6 +378,24 @@ def stream_selectors(argv):
                 result[kind] = value
                 break
     return result
+
+
+def selector_for_tracks(tracks):
+    if not isinstance(tracks, (list, tuple)):
+        raise ValueError("Ongeldige streamselectie")
+    values = []
+    for item in tracks:
+        value = str(item).strip()
+        if not value:
+            continue
+        if not re.fullmatch(r"[A-Za-z0-9_=-]+", value):
+            raise ValueError("Ongeldig stream-id")
+        if value not in values:
+            values.append(value)
+    if not values:
+        return "for=all"
+    values.sort(key=lambda value: (0, int(value)) if value.isdigit() else (1, value))
+    return "id=^(" + "|".join(re.escape(value) for value in values) + ")$:for=all"
 
 
 def rewrite_stream_selectors(command, selectors):
@@ -582,6 +601,33 @@ def stream_language(text):
     return code, LANGUAGE_LABELS[code]
 
 
+def looks_like_track_id(text):
+    value = str(text or "").strip().strip("*").strip()
+    if not value or re.fullmatch(r"\d{3,4}[xX]\d{3,4}", value):
+        return False
+    if re.fullmatch(r"\d+(?:\.\d+)?", value):
+        return True
+    if value.upper().endswith("CH"):
+        return False
+    if TRACK_HINT_PATTERN.match(value):
+        return True
+    return bool(re.fullmatch(r"[A-Za-z0-9_=-]*[_-][A-Za-z0-9_=-]*", value))
+
+
+def track_from_stream_line(line):
+    parts = [part.strip() for part in line.split("|") if part.strip()]
+    if not parts:
+        return None
+    prefix = STREAM_LINE_PATTERN.sub("", parts[0], count=1).strip()
+    prefix = re.sub(r"^\*[A-Za-z0-9_]+\s+", "", prefix).strip()
+    if looks_like_track_id(prefix):
+        return prefix
+    for index, part in enumerate(parts[:-1]):
+        if "kbps" in part.lower() and looks_like_track_id(parts[index + 1]):
+            return parts[index + 1].strip()
+    return None
+
+
 def parse_stream_line(raw):
     line = clean_log_line(raw)
     match = STREAM_LINE_PATTERN.match(line)
@@ -595,7 +641,7 @@ def parse_stream_line(raw):
     aliases = {alias.lower() for alias, label in LANGUAGE_LABELS.items() if label == language}
     resolution_match = RESOLUTION_PATTERN.search(line)
     resolution = resolution_match.group(1) if resolution_match else None
-    track_match = re.search(r"\b(\d+)\b", rest)
+    track = track_from_stream_line(line)
     details = []
     for part in parts[1:]:
         if STREAM_IGNORE_PATTERN.search(part):
@@ -613,7 +659,7 @@ def parse_stream_line(raw):
         "resolution": resolution,
         "language": language,
         "language_code": code,
-        "track": track_match.group(1) if track_match else None,
+        "track": track,
         "details": " · ".join(details),
         "raw": line,
     }
@@ -1617,10 +1663,17 @@ def start_queue():
 def update_job_streams(job_id):
     job = get_live_job(job_id)
     data = request.get_json(silent=True) or {}
-    selectors = {kind: data[kind] for kind in STREAM_OPTIONS if kind in data}
-    if not selectors:
-        return jsonify({"error": "Geen streamselecties opgegeven"}), 400
     try:
+        if isinstance(data.get("tracks"), dict):
+            selectors = {
+                kind: selector_for_tracks(data["tracks"][kind])
+                for kind in STREAM_OPTIONS
+                if kind in data["tracks"]
+            }
+        else:
+            selectors = {kind: data[kind] for kind in STREAM_OPTIONS if kind in data}
+        if not selectors:
+            return jsonify({"error": "Geen streamselecties opgegeven"}), 400
         return jsonify(job.update_streams(selectors))
     except RuntimeError as exc:
         return jsonify({"error": str(exc)}), 409

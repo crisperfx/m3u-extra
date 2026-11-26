@@ -23,6 +23,7 @@ let activeJobId = null;
 let lastJobs = [];
 let editingJobId = null;
 const queueDrafts = {};
+const collapsedJobs = new Set();
 let healthOk = null;
 let healthKey = 'health.connecting';
 
@@ -82,9 +83,20 @@ function renderJobs(jobs) {
   }
   for (const job of jobs) {
     const li = document.createElement('li');
+    li.className = 'job';
 
     const top = document.createElement('div');
     top.className = 'job-top';
+    const collapsed = collapsedJobs.has(job.id) || job.status !== 'running';
+    const toggle = document.createElement('button');
+    toggle.className = 'job-toggle';
+    toggle.textContent = collapsed ? '▸' : '▾';
+    toggle.title = T('action.toggleDetails');
+    toggle.setAttribute('aria-expanded', String(!collapsed));
+    toggle.onclick = () => {
+      if (collapsed) collapsedJobs.delete(job.id); else collapsedJobs.add(job.id);
+      renderJobs(lastJobs);
+    };
     const title = document.createElement('span');
     title.className = 'job-title';
     title.textContent = job.title || job.command;
@@ -95,8 +107,11 @@ function renderJobs(jobs) {
     const pctTop = document.createElement('span');
     pctTop.className = `job-pct${job.progress == null ? '' : ' has-value'}`;
     pctTop.textContent = job.progress == null ? T('common.dash') : `${job.progress}%`;
-    top.append(title, phase, pctTop);
+    top.append(toggle, title, phase, pctTop);
 
+    const details = document.createElement('div');
+    details.className = 'job-details';
+    details.hidden = collapsed;
     const meta = document.createElement('div');
     meta.className = 'job-meta';
     const time = document.createElement('span');
@@ -152,11 +167,12 @@ function renderJobs(jobs) {
       actions.append(retryBtn);
     }
     meta.append(actions);
-    li.append(top, meta);
+    details.append(meta);
     const streamBlock = window.renderSelectedStreams ? window.renderSelectedStreams(job) : null;
-    if (streamBlock) li.append(streamBlock);
+    if (streamBlock) details.append(streamBlock);
     const activeBlock = window.renderActiveStream ? window.renderActiveStream(job) : null;
-    if (activeBlock) li.append(activeBlock);
+    if (activeBlock) details.append(activeBlock);
+    li.append(top, details);
     jobsEl.append(li);
   }
 }
@@ -167,6 +183,33 @@ const QUEUE_FIELDS = [
   ['subtitle', 'stream.subtitle']
 ];
 
+function streamDisplay(kind, stream) {
+  const main = kind === 'video'
+    ? (stream.resolution || stream.name || T('stream.video'))
+    : ((stream.language ? `${stream.language}${stream.language_code ? ` (${stream.language_code})` : ''}` : stream.name) || T('common.unknown'));
+  const bits = [];
+  if (stream.details) bits.push(stream.details);
+  if (stream.track) bits.push(`${T('stream.track')} ${stream.track}`);
+  return bits.length ? `${main} · ${bits.join(' · ')}` : main;
+}
+
+function initialTracks(job) {
+  const result = {};
+  for (const [kind] of QUEUE_FIELDS) {
+    const items = ((job.streams || {})[kind] || []).filter(item => item.track != null);
+    if (!items.length) continue;
+    const selector = (job.selectors || {})[kind] || '';
+    const match = selector.match(/id=\^\(([^)]+)\)\$/);
+    if (match) {
+      const ids = match[1].split('|').map(value => value.replace(/\\/g, ''));
+      result[kind] = items.filter(item => ids.includes(String(item.track))).map(item => String(item.track));
+    } else {
+      result[kind] = items.map(item => String(item.track));
+    }
+  }
+  return result;
+}
+
 function buildQueueEditor(job) {
   const wrap = document.createElement('div');
   wrap.className = 'queue-editor';
@@ -175,27 +218,71 @@ function buildQueueEditor(job) {
   heading.textContent = T('edit.title');
   wrap.append(heading);
 
-  const draft = queueDrafts[job.id] || { ...(job.selectors || {}) };
+  const hasTracks = QUEUE_FIELDS.some(([kind]) =>
+    ((job.streams || {})[kind] || []).some(item => item.track != null));
+  const draft = queueDrafts[job.id] || (hasTracks
+    ? { mode: 'tracks', tracks: initialTracks(job) }
+    : { mode: 'selector', ...(job.selectors || {}) });
   queueDrafts[job.id] = draft;
-  const fields = document.createElement('div');
-  fields.className = 'queue-fields';
-  for (const [key, labelKey] of QUEUE_FIELDS) {
-    const field = document.createElement('label');
-    field.className = 'queue-field';
-    const label = document.createElement('span');
-    label.textContent = T(labelKey);
-    const input = document.createElement('input');
-    input.type = 'text';
-    input.value = draft[key] || '';
-    input.placeholder = T('edit.placeholder');
-    input.oninput = () => {
-      draft[key] = input.value;
-      queueDrafts[job.id] = draft;
-    };
-    field.append(label, input);
-    fields.append(field);
+
+  if (draft.mode === 'tracks' && hasTracks) {
+    const hint = document.createElement('div');
+    hint.className = 'edit-hint';
+    hint.textContent = T('edit.hint');
+    wrap.append(hint);
+    for (const [kind, labelKey] of QUEUE_FIELDS) {
+      const items = ((job.streams || {})[kind] || []).filter(item => item.track != null);
+      if (!items.length) continue;
+      if (!draft.tracks) draft.tracks = {};
+      if (!Array.isArray(draft.tracks[kind])) draft.tracks[kind] = initialTracks(job)[kind] || [];
+      const group = document.createElement('div');
+      group.className = 'track-group';
+      const label = document.createElement('div');
+      label.className = 'track-group-title';
+      label.textContent = T(labelKey);
+      group.append(label);
+      for (const item of items) {
+        const id = String(item.track);
+        const row = document.createElement('label');
+        row.className = 'track-row';
+        const box = document.createElement('input');
+        box.type = 'checkbox';
+        box.checked = draft.tracks[kind].includes(id);
+        box.onchange = () => {
+          const values = new Set(draft.tracks[kind]);
+          if (box.checked) values.add(id); else values.delete(id);
+          draft.tracks[kind] = [...values];
+          queueDrafts[job.id] = draft;
+        };
+        const text = document.createElement('span');
+        text.textContent = streamDisplay(kind, item);
+        row.append(box, text);
+        group.append(row);
+      }
+      wrap.append(group);
+    }
+  } else {
+    draft.mode = 'selector';
+    const fields = document.createElement('div');
+    fields.className = 'queue-fields';
+    for (const [key, labelKey] of QUEUE_FIELDS) {
+      const field = document.createElement('label');
+      field.className = 'queue-field';
+      const label = document.createElement('span');
+      label.textContent = T(labelKey);
+      const input = document.createElement('input');
+      input.type = 'text';
+      input.value = draft[key] || '';
+      input.placeholder = T('edit.placeholder');
+      input.oninput = () => {
+        draft[key] = input.value;
+        queueDrafts[job.id] = draft;
+      };
+      field.append(label, input);
+      fields.append(field);
+    }
+    wrap.append(fields);
   }
-  wrap.append(fields);
 
   const actions = document.createElement('div');
   actions.className = 'queue-actions';
@@ -204,11 +291,18 @@ function buildQueueEditor(job) {
   saveBtn.textContent = T('action.save');
   saveBtn.onclick = async () => {
     saveBtn.disabled = true;
+    const payload = draft.mode === 'tracks'
+      ? {
+          tracks: Object.fromEntries(QUEUE_FIELDS
+            .filter(([kind]) => Array.isArray((draft.tracks || {})[kind]))
+            .map(([kind]) => [kind, draft.tracks[kind]]))
+        }
+      : Object.fromEntries(QUEUE_FIELDS.map(([kind]) => [kind, draft[kind] || '']));
     try {
       await api(`/api/jobs/${job.id}/streams`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(draft)
+        body: JSON.stringify(payload)
       });
       delete queueDrafts[job.id];
       editingJobId = null;
