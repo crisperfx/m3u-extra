@@ -1133,7 +1133,12 @@ class StaticAssetTests(unittest.TestCase):
     def test_options_expose_folder_naming_controls(self):
         html = app_module.app.test_client().get("/options").get_data(as_text=True)
         js = app_module.STATIC_DIR.joinpath("options.js").read_text(encoding="utf-8")
+        css = app_module.STATIC_DIR.joinpath("style.css").read_text(encoding="utf-8")
         i18n = app_module.STATIC_DIR.joinpath("i18n.js").read_text(encoding="utf-8")
+        self.assertEqual(html.count('class="options-group"'), 4)
+        self.assertIn('class="options-actions"', html)
+        self.assertIn(".options-group", css)
+        self.assertIn(".group-hint", css)
         for control in (
             "folderMovies",
             "folderSeries",
@@ -1146,12 +1151,17 @@ class StaticAssetTests(unittest.TestCase):
         self.assertIn("folder_uploader_tag: folderUploaderEl.checked", js)
         self.assertIn("folder_resolution_tag: folderResolutionEl.checked", js)
         for key in (
+            "options.groupNames",
+            "options.groupNamesHelp",
             "options.folderGroup",
+            "options.folderGroupHelp",
             "options.folderMovies",
             "options.folderSeries",
+            "options.folderNames",
             "options.folderUploaderTag",
             "options.folderResolutionTag",
             "options.folderNamesHelp",
+            "options.groupStart",
         ):
             self.assertEqual(i18n.count(f"'{key}':"), 3)
 
@@ -1161,7 +1171,9 @@ class StaticAssetTests(unittest.TestCase):
         self.assertIn(
             "ffmpeg-n9.0-latest-linux64-gpl-9.0.tar.xz", dockerfile
         )
-        self.assertIn("FFMPEG_BINARY=/usr/local/bin/ffmpeg", dockerfile)
+        self.assertIn("FFMPEG_BINARY=/usr/bin/ffmpeg", dockerfile)
+        self.assertIn("ln -sf /usr/local/bin/ffmpeg /usr/bin/ffmpeg", dockerfile)
+        self.assertIn("/usr/bin/ffmpeg -version", dockerfile)
         self.assertNotIn("unzip ffmpeg libstdc++6", dockerfile)
 
 
