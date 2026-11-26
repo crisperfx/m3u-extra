@@ -112,6 +112,23 @@ class StreamParsingTests(unittest.TestCase):
         self.assertEqual(len(info["audio"]), 2)
         self.assertEqual(len(info["subtitle"]), 1)
 
+    def test_collector_keeps_available_streams_before_selection(self):
+        collector = app_module.StreamCollector()
+        collector.feed(
+            "22:50:30.000 INFO : Total streams: 3, 1, 0, 0\n"
+            "22:50:30.001 INFO : Vid Original | 1280x720 | 4528 Kbps | 1 | dvh1.05.02 | 358 Segments | Main | ~22m52s\n"
+            "22:50:30.002 INFO : Vid Original | 1280x720 | 3579 Kbps | 11 | avc1.4d401f | 358 Segments | Main | ~22m52s\n"
+            "22:50:31.885 INFO : Selected streams:\n"
+            "22:50:31.886 INFO : Vid Original | 1280x720 | 4528 Kbps | 1 | dvh1.05.02 | 358 Segments | Main | ~22m52s\n"
+            "22:50:31.887 WARN : Writing meta json\n"
+        )
+        info = collector.info()
+        self.assertEqual([item["track"] for item in info["video"]], ["1"])
+        self.assertEqual(
+            [item["track"] for item in info["available_streams"]["video"]],
+            ["1", "11"],
+        )
+
     def test_job_info_contains_streams(self):
         job = app_module.Job("N_m3u8DL-RE", ["N_m3u8DL-RE"])
         job.observe(SAMPLE_LOG)
@@ -1408,6 +1425,19 @@ class DolbyVisionAvoidanceTests(unittest.TestCase):
         )
         self.assertEqual(result["video"], "id=^(11)$:for=all")
 
+    def test_prefer_non_dv_selectors_swaps_probe_selection_without_id(self):
+        streams = [
+            app_module.parse_stream_line(line)
+            for line in (
+                "Vid Original | 1280x720 | 4528 Kbps | 1 | dvh1.05.02 | 358 Segments | Main | ~22m52s",
+                "Vid Original | 1280x720 | 3579 Kbps | 11 | avc1.4d401f | 358 Segments | Main | ~22m52s",
+            )
+        ]
+        result = app_module.prefer_non_dv_selectors(
+            {"video": "res=^1280x:for=best"}, streams, streams[:1]
+        )
+        self.assertEqual(result["video"], "id=^(11)$:for=all")
+
     def test_prefer_non_dv_selectors_respects_explicit_dv_codec(self):
         streams = [
             app_module.parse_stream_line(
@@ -1440,6 +1470,34 @@ class DolbyVisionAvoidanceTests(unittest.TestCase):
         ):
             job.update_streams({"video": "id=^(1)$:for=all"})
         self.assertIn("id=^(11)$:for=all", job.argv)
+
+    def test_update_streams_swaps_dv_from_available_probe_log(self):
+        command = 'N_m3u8DL-RE.exe "https://example.com/index.mpd"'
+        argv = app_module.parse_command(command)
+        job = app_module.Job(command, argv)
+        self.addCleanup(job.close_log)
+        job.status = "needs_selection"
+        job.streams.feed(
+            "22:50:30.001 INFO : Vid Original | 1280x720 | 4528 Kbps | 1 | dvh1.05.02 | 358 Segments | Main | ~22m52s\n"
+            "22:50:30.002 INFO : Vid Original | 1280x720 | 3579 Kbps | 11 | avc1.4d401f | 358 Segments | Main | ~22m52s\n"
+            "22:50:31.885 INFO : Selected streams:\n"
+            "22:50:31.886 INFO : Vid Original | 1280x720 | 4528 Kbps | 1 | dvh1.05.02 | 358 Segments | Main | ~22m52s\n"
+            "22:50:31.887 WARN : Writing meta json\n"
+        )
+        with (
+            mock.patch.object(app_module, "fetch_manifest_text", return_value=None),
+            mock.patch.object(
+                app_module,
+                "load_settings",
+                return_value=dict(app_module.DEFAULT_SETTINGS),
+            ),
+        ):
+            job.update_streams({"video": "res=^1280x:for=best"})
+        self.assertIn("id=^(11)$:for=all", job.argv)
+        self.assertIn(
+            "DV-video vervangen",
+            Path(app_module.log_file_path(job.id)).read_text(encoding="utf-8"),
+        )
 
 
 if __name__ == "__main__":

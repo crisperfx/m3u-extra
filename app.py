@@ -486,15 +486,27 @@ def stream_bitrate(stream):
     return float(match.group(1)) if match else 0.0
 
 
-def prefer_non_dv_selectors(selectors, video_streams):
+def prefer_non_dv_selectors(selectors, video_streams, selected_streams=None):
     value = selectors.get("video")
     if not value or DV_STREAM_CODEC_PATTERN.search(str(value)):
         return selectors
     selected_ids = selected_track_ids(value)
-    if not selected_ids:
-        return selectors
     streams = [item for item in (video_streams or []) if isinstance(item, dict)]
-    selected = [item for item in streams if str(item.get("track")) in selected_ids]
+    if selected_ids:
+        selected = [item for item in streams if str(item.get("track")) in selected_ids]
+        if not selected:
+            selected = [
+                item
+                for item in (selected_streams or [])
+                if isinstance(item, dict)
+                and str(item.get("track")) in selected_ids
+            ]
+    else:
+        selected = [
+            item
+            for item in (selected_streams or [])
+            if isinstance(item, dict) and stream_is_dv(item)
+        ]
     if not any(stream_is_dv(item) for item in selected):
         return selectors
     alternatives = [item for item in streams if stream_is_non_dv(item)]
@@ -887,6 +899,7 @@ class StreamCollector:
         self.video = []
         self.audio = []
         self.subtitle = []
+        self.available = {"video": [], "audio": [], "subtitle": []}
         self.collecting = False
         self.residue = ""
 
@@ -918,22 +931,32 @@ class StreamCollector:
             self.subtitle = []
             self.collecting = True
             return True
-        if not self.collecting:
-            return False
         parsed = parse_stream_line(line)
-        if parsed:
+        if not parsed:
+            if self.collecting:
+                self.collecting = False
+            return False
+        changed = False
+        available_bucket = self.available[parsed["kind"]]
+        if parsed not in available_bucket:
+            available_bucket.append(parsed)
+            changed = True
+        if self.collecting:
             bucket = self.buckets()[parsed["kind"]]
             if parsed not in bucket:
                 bucket.append(parsed)
-            return True
-        self.collecting = False
-        return False
+                changed = True
+        return changed
 
     def info(self):
         return {
             "video": list(self.video),
             "audio": list(self.audio),
             "subtitle": list(self.subtitle),
+            "available_streams": {
+                kind: [dict(item) for item in items]
+                for kind, items in self.available.items()
+            },
         }
 
 
@@ -1555,7 +1578,11 @@ class Job:
     def update_streams(self, selectors):
         selectors = dict(selectors)
         if load_settings().get("avoid_dv_video", True):
-            swapped = prefer_non_dv_selectors(selectors, self.streams.video)
+            swapped = prefer_non_dv_selectors(
+                selectors,
+                self.streams.available["video"] or self.streams.video,
+                self.streams.video,
+            )
             if swapped != selectors:
                 message = f"[webserver] DV-video vervangen door {swapped.get('video')}\n"
                 self.append_log(message)
