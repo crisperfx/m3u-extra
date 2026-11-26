@@ -361,6 +361,51 @@ def option_value(argv, option):
     return None
 
 
+STREAM_OPTIONS = {
+    "video": ("--select-video", "-sv"),
+    "audio": ("--select-audio", "-sa"),
+    "subtitle": ("--select-subtitle", "-ss"),
+}
+
+
+def stream_selectors(argv):
+    result = {}
+    for kind, options in STREAM_OPTIONS.items():
+        for option in options:
+            value = option_value(argv, option)
+            if value is not None:
+                result[kind] = value
+                break
+    return result
+
+
+def rewrite_stream_selectors(command, selectors):
+    try:
+        tokens = shlex.split(command, posix=True)
+    except ValueError as exc:
+        raise ValueError("Ongeldig commando") from exc
+
+    cleaned = {}
+    for kind, value in selectors.items():
+        if kind not in STREAM_OPTIONS or value is None:
+            continue
+        value = str(value).replace("\r", " ").replace("\n", " ").strip()
+        if "\x00" in value:
+            raise ValueError("Ongeldig teken in streamselectie")
+        if len(value) > 200:
+            raise ValueError("Streamselectie is te lang")
+        cleaned[kind] = value
+
+    for options in STREAM_OPTIONS.values():
+        for option in options:
+            tokens, _ = strip_option(tokens, option)
+    for kind, options in STREAM_OPTIONS.items():
+        value = cleaned.get(kind)
+        if value:
+            tokens += [options[0], value]
+    return shlex.join(tokens)
+
+
 def strip_name_tags(name, tags):
     result = str(name or "")
     for tag in tags:
@@ -1011,11 +1056,12 @@ def parse_command(raw, title_override=None):
 
 
 class Job:
-    def __init__(self, command, argv):
+    def __init__(self, command, argv, title_override=None):
         self.id = uuid.uuid4().hex[:12]
         self.command = command
         self.title = extract_title(argv)
         self.argv = argv
+        self.title_override = title_override
         self.resolution_tag = bool(load_settings().get("resolution_tag"))
         try:
             self.save_dir = safe_dir(option_value(argv, "--save-dir"))
@@ -1046,6 +1092,7 @@ class Job:
             "title": self.title,
             "status": self.status,
             "phase": self.phase,
+            "selectors": stream_selectors(self.argv),
             "progress": self.progress,
             "detail": self.detail,
             "streams": self.streams.info(),
@@ -1192,6 +1239,20 @@ class Job:
         self.launch()
         return True
 
+    def update_streams(self, selectors):
+        command = rewrite_stream_selectors(self.command, selectors)
+        argv = parse_command(command, title_override=self.title_override)
+        with _jobs_lock:
+            if self.status != "queued":
+                raise RuntimeError("Taak is al gestart")
+            self.command = command
+            self.argv = argv
+            self.title = extract_title(argv)
+            self.save_dir = safe_dir(option_value(argv, "--save-dir"))
+            self.save_name = option_value(argv, "--save-name")
+            self.resolution_tag = bool(load_settings().get("resolution_tag"))
+        return self.info()
+
     def _run(self):
         self.started = time.time()
         env = os.environ.copy()
@@ -1283,7 +1344,9 @@ class ArchivedJob:
         self.id = info.get("id")
 
     def info(self):
-        return dict(self.info_data)
+        info = dict(self.info_data)
+        info.setdefault("archived", True)
+        return info
 
 
 def get_job(job_id):
@@ -1296,6 +1359,15 @@ def get_job(job_id):
     if job is not None:
         return job
     abort(404)
+
+
+def get_live_job(job_id):
+    if not valid_job_id(job_id):
+        abort(404)
+    job = _jobs.get(job_id)
+    if job is None:
+        abort(404)
+    return job
 
 
 def resolve_file(name):
@@ -1349,7 +1421,7 @@ def health():
     )
 
 
-def enqueue_job(command, argv, queue=None):
+def enqueue_job(command, argv, queue=None, title_override=None):
     if queue is None:
         queue = not bool(load_settings().get("auto_start", True))
     with _jobs_lock:
@@ -1357,7 +1429,7 @@ def enqueue_job(command, argv, queue=None):
             active = sum(1 for item in _jobs.values() if item.status == "running")
             if active >= MAX_CONCURRENT:
                 return None
-        job = Job(command, argv)
+        job = Job(command, argv, title_override=title_override)
         if not queue:
             job.status = "running"
             job.phase = "initialiseren"
@@ -1378,7 +1450,12 @@ def create_job():
         return jsonify({"error": str(exc)}), 400
 
     queue = data.get("queue")
-    job = enqueue_job(command, argv, queue=None if queue is None else bool(queue))
+    job = enqueue_job(
+        command,
+        argv,
+        queue=None if queue is None else bool(queue),
+        title_override=title_override,
+    )
     if job is None:
         return jsonify({"error": f"Maximaal {MAX_CONCURRENT} gelijktijdige taken"}), 429
     return jsonify(job.info()), 201
@@ -1399,7 +1476,12 @@ def extension_submit():
         return jsonify({"error": str(exc)}), 400
 
     queue = data.get("queue")
-    job = enqueue_job(command, argv, queue=None if queue is None else bool(queue))
+    job = enqueue_job(
+        command,
+        argv,
+        queue=None if queue is None else bool(queue),
+        title_override=title_override,
+    )
     if job is None:
         return jsonify({"error": f"Maximaal {MAX_CONCURRENT} gelijktijdige taken"}), 429
     return jsonify({"ok": True, "id": job.id}), 201
@@ -1529,6 +1611,37 @@ def start_queue():
         _queue_pump_active = True
     started, remaining = pump_queue_once()
     return jsonify({"started": started, "remaining": remaining})
+
+
+@app.post("/api/jobs/<job_id>/streams")
+def update_job_streams(job_id):
+    job = get_live_job(job_id)
+    data = request.get_json(silent=True) or {}
+    selectors = {kind: data[kind] for kind in STREAM_OPTIONS if kind in data}
+    if not selectors:
+        return jsonify({"error": "Geen streamselecties opgegeven"}), 400
+    try:
+        return jsonify(job.update_streams(selectors))
+    except RuntimeError as exc:
+        return jsonify({"error": str(exc)}), 409
+    except ValueError as exc:
+        return jsonify({"error": str(exc)}), 400
+
+
+@app.post("/api/jobs/<job_id>/retry")
+def retry_job(job_id):
+    job = get_live_job(job_id)
+    if job.status != "failed":
+        return jsonify({"error": "Alleen gefaalde taken kunnen opnieuw"}), 409
+    retried = enqueue_job(
+        job.command,
+        list(job.argv),
+        queue=False,
+        title_override=job.title_override,
+    )
+    if retried is None:
+        return jsonify({"error": f"Maximaal {MAX_CONCURRENT} gelijktijdige taken"}), 429
+    return jsonify(retried.info()), 201
 
 
 @app.post("/api/jobs/<job_id>/cancel")

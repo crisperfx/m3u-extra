@@ -625,6 +625,81 @@ class QueueDrainingTests(unittest.TestCase):
         first.launch.assert_not_called()
 
 
+class JobStreamEditTests(unittest.TestCase):
+    def test_stream_selectors_reads_long_and_short_options(self):
+        argv = [
+            "N_m3u8DL-RE",
+            "-sv",
+            "lang=eng",
+            "--select-audio=lang=nld",
+        ]
+        self.assertEqual(
+            app_module.stream_selectors(argv),
+            {"video": "lang=eng", "audio": "lang=nld"},
+        )
+
+    def test_rewrite_stream_selectors_replaces_values(self):
+        command = 'N_m3u8DL-RE.exe "https://example.com/index.mpd" -sv lang=eng -sa 7'
+        result = app_module.rewrite_stream_selectors(
+            command, {"video": "lang=nld", "audio": "lang=eng", "subtitle": ""}
+        )
+        self.assertIn("--select-video lang=nld", result)
+        self.assertIn("--select-audio lang=eng", result)
+        self.assertNotIn("lang=eng -sa", result)
+        self.assertNotIn("--select-subtitle", result)
+
+    def test_edit_streams_endpoint_updates_queued_job(self):
+        command = 'N_m3u8DL-RE.exe "https://example.com/index.mpd" -sv lang=eng'
+        job = app_module.Job(command, ["N_m3u8DL-RE", "-sv", "lang=eng"])
+        with (
+            mock.patch.object(app_module, "_jobs", {job.id: job}),
+            mock.patch.object(app_module, "fetch_manifest_text", return_value=None),
+        ):
+            client = app_module.app.test_client()
+            response = client.post(
+                f"/api/jobs/{job.id}/streams",
+                json={"video": "lang=nld", "audio": "", "subtitle": ""},
+            )
+        self.assertEqual(response.status_code, 200)
+        info = response.get_json()
+        self.assertEqual(info["selectors"], {"video": "lang=nld"})
+        self.assertEqual(job.status, "queued")
+
+    def test_edit_streams_endpoint_rejects_running_job(self):
+        job = app_module.Job("N_m3u8DL-RE", ["N_m3u8DL-RE"])
+        job.status = "running"
+        with mock.patch.object(app_module, "_jobs", {job.id: job}):
+            response = app_module.app.test_client().post(
+                f"/api/jobs/{job.id}/streams", json={"video": "lang=nld"}
+            )
+        self.assertEqual(response.status_code, 409)
+
+    def test_retry_endpoint_restarts_failed_job(self):
+        command = 'N_m3u8DL-RE.exe "https://example.com/index.mpd"'
+        job = app_module.Job(command, ["N_m3u8DL-RE", "https://example.com/index.mpd"])
+        job.status = "failed"
+        with (
+            mock.patch.object(app_module, "_jobs", {job.id: job}),
+            mock.patch.object(app_module.Job, "launch") as launch,
+            mock.patch.object(app_module, "fetch_manifest_text", return_value=None),
+        ):
+            response = app_module.app.test_client().post(
+                f"/api/jobs/{job.id}/retry"
+            )
+        self.assertEqual(response.status_code, 201)
+        self.assertNotEqual(response.get_json()["id"], job.id)
+        launch.assert_called_once()
+
+    def test_retry_endpoint_rejects_running_job(self):
+        job = app_module.Job("N_m3u8DL-RE", ["N_m3u8DL-RE"])
+        job.status = "running"
+        with mock.patch.object(app_module, "_jobs", {job.id: job}):
+            response = app_module.app.test_client().post(
+                f"/api/jobs/{job.id}/retry"
+            )
+        self.assertEqual(response.status_code, 409)
+
+
 class EffectiveResolutionTests(unittest.TestCase):
     def test_strip_name_tags(self):
         self.assertEqual(

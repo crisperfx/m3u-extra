@@ -95,6 +95,24 @@ body {
 .compact-list li { padding: 9px 12px; border-bottom: 1px solid var(--line); }
 .compact-list li:last-child { border-bottom: 0; }
 .queue-title { display: block; font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.queue-row { display: flex; align-items: center; gap: 8px; }
+.queue-row .queue-title { flex: 1; min-width: 0; }
+.queue-editor {
+  margin-top: 10px; padding: 10px; border-radius: 10px;
+  background: rgba(6, 10, 20, .55); border: 1px solid var(--line);
+}
+.queue-editor-title { color: var(--muted); font-size: 12px; margin-bottom: 8px; }
+.queue-fields { display: grid; gap: 8px; }
+.queue-field { display: grid; gap: 4px; color: var(--muted); font-size: 12px; }
+.queue-field input {
+  width: 100%; box-sizing: border-box; color: var(--text);
+  background: rgba(6, 10, 20, .75); border: 1px solid var(--line);
+  border-radius: 8px; padding: 7px 9px;
+  font: 12px/1.4 ui-monospace, SFMono-Regular, Consolas, monospace;
+  outline: none;
+}
+.queue-field input:focus { border-color: var(--accent); box-shadow: 0 0 0 2px rgba(124, 140, 255, .16); }
+.queue-actions { display: flex; gap: 8px; margin-top: 10px; }
 
 textarea {
   width: 100%; min-height: 145px; resize: vertical;
@@ -327,6 +345,7 @@ body.log-page { min-height: 100vh; min-height: 100dvh; }
   .job-title { flex: 1 1 100%; white-space: normal; overflow: visible; text-overflow: clip; }
   .job-detail { display: none; }
   .job-actions .btn { flex: 1 1 100%; }
+  .queue-actions .btn { flex: 1 1 100%; }
   .file-row { align-items: flex-start; }
   .file-row a.name { white-space: normal; overflow: visible; text-overflow: clip; }
   .file-row .size { margin-left: auto; }

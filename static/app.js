@@ -20,6 +20,9 @@ const TP = value => (window.tp ? window.tp(value) : value);
 const TR = value => (window.tr ? window.tr(value) : value);
 
 let activeJobId = null;
+let lastJobs = [];
+let editingJobId = null;
+const queueDrafts = {};
 let healthOk = null;
 let healthKey = 'health.connecting';
 
@@ -132,6 +135,22 @@ function renderJobs(jobs) {
       };
       actions.append(stopJobBtn);
     }
+    if (job.status === 'failed' && !job.archived) {
+      const retryBtn = document.createElement('button');
+      retryBtn.className = 'btn tiny';
+      retryBtn.textContent = T('action.retry');
+      retryBtn.onclick = async () => {
+        retryBtn.disabled = true;
+        try {
+          await api(`/api/jobs/${job.id}/retry`, { method: 'POST' });
+          await refreshJobs();
+        } catch (e) {
+          showError(e.message);
+          retryBtn.disabled = false;
+        }
+      };
+      actions.append(retryBtn);
+    }
     meta.append(actions);
     li.append(top, meta);
     const streamBlock = window.renderSelectedStreams ? window.renderSelectedStreams(job) : null;
@@ -142,6 +161,76 @@ function renderJobs(jobs) {
   }
 }
 
+const QUEUE_FIELDS = [
+  ['video', 'stream.video'],
+  ['audio', 'stream.audio'],
+  ['subtitle', 'stream.subtitle']
+];
+
+function buildQueueEditor(job) {
+  const wrap = document.createElement('div');
+  wrap.className = 'queue-editor';
+  const heading = document.createElement('div');
+  heading.className = 'queue-editor-title';
+  heading.textContent = T('edit.title');
+  wrap.append(heading);
+
+  const draft = queueDrafts[job.id] || { ...(job.selectors || {}) };
+  queueDrafts[job.id] = draft;
+  const fields = document.createElement('div');
+  fields.className = 'queue-fields';
+  for (const [key, labelKey] of QUEUE_FIELDS) {
+    const field = document.createElement('label');
+    field.className = 'queue-field';
+    const label = document.createElement('span');
+    label.textContent = T(labelKey);
+    const input = document.createElement('input');
+    input.type = 'text';
+    input.value = draft[key] || '';
+    input.placeholder = T('edit.placeholder');
+    input.oninput = () => {
+      draft[key] = input.value;
+      queueDrafts[job.id] = draft;
+    };
+    field.append(label, input);
+    fields.append(field);
+  }
+  wrap.append(fields);
+
+  const actions = document.createElement('div');
+  actions.className = 'queue-actions';
+  const saveBtn = document.createElement('button');
+  saveBtn.className = 'btn tiny primary';
+  saveBtn.textContent = T('action.save');
+  saveBtn.onclick = async () => {
+    saveBtn.disabled = true;
+    try {
+      await api(`/api/jobs/${job.id}/streams`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(draft)
+      });
+      delete queueDrafts[job.id];
+      editingJobId = null;
+      await refreshJobs();
+    } catch (e) {
+      showError(e.message);
+      saveBtn.disabled = false;
+    }
+  };
+  const cancelBtn = document.createElement('button');
+  cancelBtn.className = 'btn tiny subtle';
+  cancelBtn.textContent = T('action.cancel');
+  cancelBtn.onclick = () => {
+    delete queueDrafts[job.id];
+    editingJobId = null;
+    renderQueue(lastJobs);
+  };
+  actions.append(saveBtn, cancelBtn);
+  wrap.append(actions);
+  return wrap;
+}
+
 function renderQueue(jobs) {
   const queued = jobs.filter(job => job.status === 'queued');
   queuePanel.hidden = queued.length === 0;
@@ -149,11 +238,23 @@ function renderQueue(jobs) {
   queueEl.innerHTML = '';
   for (const job of queued) {
     const li = document.createElement('li');
+    li.className = 'queue-item';
+    const row = document.createElement('div');
+    row.className = 'queue-row';
     const title = document.createElement('span');
     title.className = 'queue-title';
     title.textContent = job.title || job.command;
     title.title = job.command;
-    li.append(title);
+    const editBtn = document.createElement('button');
+    editBtn.className = 'btn tiny subtle';
+    editBtn.textContent = T('action.editStreams');
+    editBtn.onclick = () => {
+      editingJobId = editingJobId === job.id ? null : job.id;
+      renderQueue(lastJobs);
+    };
+    row.append(title, editBtn);
+    li.append(row);
+    if (editingJobId === job.id) li.append(buildQueueEditor(job));
     queueEl.append(li);
   }
 }
@@ -195,8 +296,9 @@ function renderFiles(files) {
 async function refreshJobs() {
   try {
     const jobs = await api('/api/jobs');
+    lastJobs = jobs;
     renderJobs(jobs);
-    renderQueue(jobs);
+    if (!editingJobId) renderQueue(jobs);
     setActiveJob(jobs.find(job => job.status === 'running') || null);
   } catch (e) {
     showError(e.message);
