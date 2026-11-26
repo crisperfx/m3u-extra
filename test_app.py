@@ -399,7 +399,7 @@ class DecryptionKeyTests(unittest.TestCase):
     BASE = 'N_m3u8DL-RE.exe "https://example.com/index.mpd"'
     KEY_ONE = "0123456789abcdef0123456789abcdef"
     KEY_TWO = "fedcba9876543210fedcba9876543210"
-    KID_ONE = "e315a0db6aae3454b95b8de43f6503932"
+    KID_ONE = "e315a0db6aae3454b95b8de43f650393"
     KID_TWO = "d2de49accc243ea79af5ba0213cf7608"
 
     def parse(self, command):
@@ -429,6 +429,47 @@ class DecryptionKeyTests(unittest.TestCase):
             f"--key {self.KID_TWO}:{self.KEY_ONE}"
         )
         self.assertEqual(self.key_values(argv), [self.KEY_ONE])
+
+    def test_decryption_key_kids_are_normalized(self):
+        argv = self.parse(
+            f"{self.BASE} --key {self.KID_ONE}:{self.KEY_ONE} "
+            f"--key {self.KID_TWO.upper()}:{self.KEY_TWO}"
+        )
+        self.assertEqual(
+            app_module.decryption_key_kids(argv), {self.KID_ONE, self.KID_TWO}
+        )
+
+    def test_manifest_kid_map_maps_representation_ids(self):
+        argv = self.parse(f"{self.BASE} --key {self.KID_ONE}:{self.KEY_ONE}")
+        manifest = (
+            "<MPD xmlns:cenc='urn:mpeg:cenc:2013'><Period><AdaptationSet>"
+            f"<Representation id='1'><ContentProtection cenc:default_KID='{self.KID_ONE}'/>"
+            "</Representation>"
+            f"<Representation id='3'><ContentProtection cenc:default_KID='{self.KID_TWO.upper()}'/>"
+            "</Representation>"
+            "</AdaptationSet></Period></MPD>"
+        )
+        with mock.patch.object(app_module, "fetch_manifest_text", return_value=manifest):
+            result = app_module.manifest_kid_map(argv)
+        self.assertEqual(result["1"], {self.KID_ONE})
+        self.assertEqual(result["3"], {self.KID_TWO})
+
+    def test_filter_selectors_keeps_only_decryptable_tracks(self):
+        streams = [
+            app_module.parse_stream_line(
+                "Vid Original | 1280x720 | 4528 Kbps | 1 | avc1.4d401f | 358 Segments"
+            ),
+            app_module.parse_stream_line(
+                "Vid Original | 960x540 | 2365 Kbps | 3 | avc1.4d401f | 358 Segments"
+            ),
+        ]
+        result = app_module.filter_selectors_by_keys(
+            {"video": "for=all"},
+            {"video": streams},
+            {"1": {self.KID_ONE}, "3": {self.KID_TWO}},
+            {self.KID_TWO},
+        )
+        self.assertEqual(result["video"], "id=^(3)$:for=all")
 
 
 class TitleMetadataTests(unittest.TestCase):

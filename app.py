@@ -16,7 +16,7 @@ from urllib.parse import parse_qsl, urlencode, urlparse, urlsplit, urlunsplit
 from flask import Flask, Response, abort, jsonify, render_template, request, send_file
 
 APP_DIR = Path(__file__).resolve().parent
-APP_VERSION = "1.2.37"
+APP_VERSION = "1.2.39"
 STATIC_DIR = APP_DIR / "static"
 DOWNLOAD_DIR = Path(os.environ.get("DOWNLOAD_DIR", "/downloads")).resolve()
 NDL_BINARY = os.environ.get("NDL_BINARY", "/usr/local/bin/N_m3u8DL-RE")
@@ -1170,6 +1170,106 @@ def detect_manifest_video_codecs(tokens):
     return {"dvh1": set(), "other": set()}
 
 
+def normalize_kid(value):
+    return str(value or "").replace("-", "").strip().lower()
+
+
+def decryption_key_kids(tokens):
+    result = set()
+    index = 0
+    while index < len(tokens):
+        token = tokens[index]
+        if token == "--key" and index + 1 < len(tokens):
+            value = tokens[index + 1]
+            index += 2
+        elif token.startswith("--key="):
+            value = token[len("--key=") :]
+            index += 1
+        else:
+            index += 1
+            continue
+        if ":" not in value:
+            continue
+        kid = normalize_kid(value.split(":", 1)[0])
+        if re.fullmatch(r"[0-9a-f]{32}", kid):
+            result.add(kid)
+    return result
+
+
+def manifest_kid_map(tokens):
+    result = {}
+    headers = extract_headers(tokens)
+    sources = []
+    for candidate in manifest_urls(tokens):
+        path = urlparse(candidate).path if "://" in candidate else candidate
+        if path.lower().endswith(".mpd") and candidate not in sources:
+            sources.append(candidate)
+    outer = find_manifest_input(tokens)
+    if outer and outer not in sources:
+        sources.append(outer)
+    for source in sources:
+        text = fetch_manifest_text(source, headers)
+        if not text:
+            continue
+        try:
+            root = ET.fromstring(text)
+        except ET.ParseError:
+            continue
+        for element in root.iter():
+            if local_name(element.tag) != "Representation":
+                continue
+            track = str(element.get("id") or "").strip()
+            if not track:
+                continue
+            kids = set()
+            for protection in element.iter():
+                if local_name(protection.tag) != "ContentProtection":
+                    continue
+                for name, value in protection.attrib.items():
+                    if local_name(name).lower() != "default_kid":
+                        continue
+                    kid = normalize_kid(value)
+                    if re.fullmatch(r"[0-9a-f]{32}", kid):
+                        kids.add(kid)
+            if kids:
+                result.setdefault(track, set()).update(kids)
+    return result
+
+
+def filter_selectors_by_keys(selectors, available_streams, kid_map, key_kids):
+    if not kid_map or not key_kids:
+        return selectors
+    result = dict(selectors)
+    for kind in ("video", "audio"):
+        tracks = [item for item in (available_streams.get(kind) or []) if isinstance(item, dict)]
+        if not tracks:
+            continue
+        supported = []
+        for item in tracks:
+            track = str(item.get("track") or "").strip()
+            kids = kid_map.get(track)
+            if not track or not kids or kids & key_kids:
+                supported.append(item)
+        if not supported or len(supported) == len(tracks):
+            continue
+        supported_ids = [str(item.get("track") or "").strip() for item in supported]
+        supported_ids = [value for value in dict.fromkeys(supported_ids) if value]
+        if not supported_ids:
+            continue
+        current = result.get(kind)
+        if current:
+            chosen = selected_track_ids(current)
+            if chosen:
+                kept = [value for value in supported_ids if value in chosen]
+                if kept and len(kept) == len(chosen):
+                    continue
+                if kept:
+                    result[kind] = selector_for_tracks(kept)
+                    continue
+        result[kind] = selector_for_tracks(supported_ids)
+    return result
+
+
 def has_explicit_video_filter(args):
     for index, token in enumerate(args):
         if token in ("-sv", "--select-video") and index + 1 < len(args):
@@ -1415,6 +1515,8 @@ class Job:
         self.title = extract_title(argv)
         self.argv = argv
         self.title_override = title_override
+        self.key_kids = decryption_key_kids(argv)
+        self.manifest_kids = manifest_kid_map(argv) if self.key_kids else {}
         self.needs_stream_selection = bool(probe_streams)
         self.resolution_tag = bool(load_settings().get("resolution_tag"))
         try:
@@ -1619,6 +1721,14 @@ class Job:
                 self.append_log(message)
                 self.output.put(("log", message))
                 selectors = swapped
+        filtered = filter_selectors_by_keys(
+            selectors, self.streams.available, self.manifest_kids, self.key_kids
+        )
+        if filtered != selectors:
+            message = f"[webserver] Key-filter toegepast: {filtered}\n"
+            self.append_log(message)
+            self.output.put(("log", message))
+            selectors = filtered
         command = rewrite_stream_selectors(self.command, selectors)
         argv = parse_command(command, title_override=self.title_override)
         with _jobs_lock:
