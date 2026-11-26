@@ -160,7 +160,7 @@ function renderJobs(jobs) {
       };
       actions.append(stopJobBtn);
     }
-    if (job.status === 'failed' && !job.archived) {
+    if (job.status === 'failed') {
       const retryBtn = document.createElement('button');
       retryBtn.className = 'btn tiny';
       retryBtn.textContent = T('action.retry');

@@ -952,6 +952,30 @@ class JobStreamEditTests(unittest.TestCase):
         self.assertNotEqual(response.get_json()["id"], job.id)
         launch.assert_called_once()
 
+    def test_retry_endpoint_restarts_archived_failed_job(self):
+        command = 'N_m3u8DL-RE.exe "https://example.com/index.mpd"'
+        job = app_module.Job(command, ["N_m3u8DL-RE", "https://example.com/index.mpd"])
+        info = {
+            "id": job.id,
+            "status": "failed",
+            "command": command,
+            "title_override": "The Odyssey (2026)",
+            "archived": True,
+        }
+        with (
+            mock.patch.object(app_module, "read_archived_info", return_value=info),
+            mock.patch.object(app_module, "enqueue_job") as enqueue,
+            mock.patch.object(app_module, "fetch_manifest_text", return_value=None),
+        ):
+            enqueue.return_value.info.return_value = {"id": "new"}
+            response = app_module.app.test_client().post(
+                f"/api/jobs/{job.id}/retry"
+            )
+        self.assertEqual(response.status_code, 201)
+        argv = enqueue.call_args.args[1]
+        self.assertEqual(argv[argv.index("--save-name") + 1], "The Odyssey (2026)")
+        self.assertEqual(enqueue.call_args.kwargs["title_override"], "The Odyssey (2026)")
+
     def test_retry_endpoint_rejects_running_job(self):
         job = app_module.Job("N_m3u8DL-RE", ["N_m3u8DL-RE"])
         job.status = "running"
@@ -1081,6 +1105,7 @@ class StaticAssetTests(unittest.TestCase):
         self.assertIn("collapsedJobs", js)
         self.assertIn("jobStatuses", js)
         self.assertNotIn("collapsedJobs.has(job.id) || job.status !== 'running'", js)
+        self.assertNotIn("job.status === 'failed' && !job.archived", js)
         self.assertIn("job-toggle", js)
         self.assertIn("job-details", js)
         self.assertIn(".job-details[hidden]", css)

@@ -83,6 +83,7 @@ def read_archived_info(job_id):
 def write_archived_info(job):
     info = job.info()
     info["archived"] = True
+    info["title_override"] = getattr(job, "title_override", None)
     try:
         metadata_file_path(job.id).write_text(
             json.dumps(info, ensure_ascii=False), encoding="utf-8"
@@ -1492,6 +1493,9 @@ class ArchivedJob:
     def __init__(self, info):
         self.info_data = info
         self.id = info.get("id")
+        self.command = info.get("command", "")
+        self.status = info.get("status")
+        self.title_override = info.get("title_override")
 
     def info(self):
         info = dict(self.info_data)
@@ -1824,12 +1828,16 @@ def update_job_streams(job_id):
 
 @app.post("/api/jobs/<job_id>/retry")
 def retry_job(job_id):
-    job = get_live_job(job_id)
+    job = get_job(job_id)
     if job.status != "failed":
         return jsonify({"error": "Alleen gefaalde taken kunnen opnieuw"}), 409
+    try:
+        argv = parse_command(job.command, title_override=job.title_override)
+    except ValueError as exc:
+        return jsonify({"error": str(exc)}), 400
     retried = enqueue_job(
         job.command,
-        list(job.argv),
+        argv,
         queue=False,
         title_override=job.title_override,
     )
