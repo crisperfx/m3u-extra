@@ -16,7 +16,7 @@ from urllib.parse import parse_qsl, urlencode, urlparse, urlsplit, urlunsplit
 from flask import Flask, Response, abort, jsonify, render_template, request, send_file
 
 APP_DIR = Path(__file__).resolve().parent
-APP_VERSION = "1.2.36"
+APP_VERSION = "1.2.37"
 STATIC_DIR = APP_DIR / "static"
 DOWNLOAD_DIR = Path(os.environ.get("DOWNLOAD_DIR", "/downloads")).resolve()
 NDL_BINARY = os.environ.get("NDL_BINARY", "/usr/local/bin/N_m3u8DL-RE")
@@ -1303,6 +1303,36 @@ def normalize_mkv_muxer(args):
     return result
 
 
+def normalize_decryption_keys(tokens):
+    key_values = []
+    result = []
+    index = 0
+    while index < len(tokens):
+        token = tokens[index]
+        if token == "--key" and index + 1 < len(tokens):
+            key_values.append(tokens[index + 1])
+            index += 2
+            continue
+        if token.startswith("--key="):
+            key_values.append(token[len("--key=") :])
+            index += 1
+            continue
+        result.append(token)
+        index += 1
+    if not key_values:
+        return list(tokens)
+    materials = []
+    for value in key_values:
+        material = value.split(":", 1)[-1] if ":" in value else value
+        if not material:
+            return list(tokens)
+        materials.append(material)
+    unique = list(dict.fromkeys(materials))
+    if len(unique) != 1:
+        return list(tokens)
+    return result + ["--key", unique[0]]
+
+
 def parse_command(raw, title_override=None):
     raw = raw.replace("\r\n", " ").replace("\n", " ").replace("\r", " ").strip()
     if not raw:
@@ -1335,6 +1365,7 @@ def parse_command(raw, title_override=None):
     args = sanitize_manifest_filters(args)
     args = inject_dash_ad_filters(args)
     args = normalize_mkv_muxer(args)
+    args = normalize_decryption_keys(args)
     args = drop_dv_video_if_alternative(args)
 
     base_dir = safe_dir(save_dir_raw)

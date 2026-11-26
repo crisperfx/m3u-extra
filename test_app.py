@@ -1,6 +1,7 @@
 import atexit
 import json
 import os
+import re
 import shutil
 import tempfile
 import unittest
@@ -392,6 +393,42 @@ class AdFilterTests(unittest.TestCase):
             argv = app_module.parse_command(command)
         self.assertNotIn("aws.manifestfilter", argv[1])
         self.assertIn("foo=bar", argv[1])
+
+
+class DecryptionKeyTests(unittest.TestCase):
+    BASE = 'N_m3u8DL-RE.exe "https://example.com/index.mpd"'
+    KEY_ONE = "0123456789abcdef0123456789abcdef"
+    KEY_TWO = "fedcba9876543210fedcba9876543210"
+    KID_ONE = "e315a0db6aae3454b95b8de43f6503932"
+    KID_TWO = "d2de49accc243ea79af5ba0213cf7608"
+
+    def parse(self, command):
+        with mock.patch.object(app_module, "fetch_manifest_text", return_value=None):
+            return app_module.parse_command(command)
+
+    def key_values(self, argv):
+        return [argv[index + 1] for index, token in enumerate(argv) if token == "--key"]
+
+    def test_single_kid_key_is_converted_to_bare_key(self):
+        argv = self.parse(f"{self.BASE} --key {self.KID_ONE}:{self.KEY_ONE}")
+        self.assertEqual(self.key_values(argv), [self.KEY_ONE])
+
+    def test_multiple_distinct_keys_are_preserved(self):
+        argv = self.parse(
+            f"{self.BASE} --key {self.KID_ONE}:{self.KEY_ONE} "
+            f"--key {self.KID_TWO}:{self.KEY_TWO}"
+        )
+        self.assertEqual(
+            self.key_values(argv),
+            [f"{self.KID_ONE}:{self.KEY_ONE}", f"{self.KID_TWO}:{self.KEY_TWO}"],
+        )
+
+    def test_duplicate_key_materials_are_collapsed(self):
+        argv = self.parse(
+            f"{self.BASE} --key {self.KID_ONE}:{self.KEY_ONE} "
+            f"--key {self.KID_TWO}:{self.KEY_ONE}"
+        )
+        self.assertEqual(self.key_values(argv), [self.KEY_ONE])
 
 
 class TitleMetadataTests(unittest.TestCase):
@@ -1160,8 +1197,9 @@ class EffectiveResolutionTests(unittest.TestCase):
 class StaticAssetTests(unittest.TestCase):
     def test_index_static_links_are_versioned(self):
         html = app_module.app.test_client().get("/").get_data(as_text=True)
-        self.assertRegex(html, r"/static/style\.css\?v=1\.2\.36-\d+")
-        self.assertRegex(html, r"/static/app\.js\?v=1\.2\.36-\d+")
+        version = re.escape(app_module.APP_VERSION)
+        self.assertRegex(html, rf"/static/style\.css\?v={version}-\d+")
+        self.assertRegex(html, rf"/static/app\.js\?v={version}-\d+")
 
     def test_mobile_bottom_nav_css_present(self):
         css = app_module.STATIC_DIR.joinpath("style.css").read_text(encoding="utf-8")
