@@ -413,6 +413,45 @@ class TitleMetadataTests(unittest.TestCase):
             argv = app_module.parse_command(command, title_override="Omerta S01E03")
         self.assertEqual(argv[argv.index("--save-name") + 1], "Omerta S01E03")
 
+    def test_series_titles_are_detected(self):
+        self.assertTrue(app_module.is_series_title("Omerta S01E03"))
+        self.assertTrue(app_module.is_series_title("Show s1e2 (2026)"))
+        self.assertFalse(app_module.is_series_title("The Odyssey (2026)"))
+
+    def test_folder_settings_apply_by_media_type(self):
+        settings_dir = Path(tempfile.mkdtemp(dir=app_module.DOWNLOAD_DIR))
+        self.addCleanup(shutil.rmtree, settings_dir, True)
+        settings_path = settings_dir / ".settings.json"
+        settings_path.write_text(
+            json.dumps(
+                {
+                    "uploader_tag": "YTS",
+                    "folder_movies": True,
+                    "folder_series": False,
+                    "folder_uploader_tag": False,
+                    "folder_resolution_tag": False,
+                }
+            ),
+            encoding="utf-8",
+        )
+        command = 'N_m3u8DL-RE.exe "https://example.com/index.mpd" --save-name "source"'
+
+        def option(argv, name):
+            return argv[argv.index(name) + 1]
+
+        with (
+            mock.patch.object(app_module, "SETTINGS_FILE", settings_path),
+            mock.patch.object(app_module, "fetch_manifest_text", return_value=None),
+        ):
+            movie = app_module.parse_command(command, title_override="The Odyssey (2026)")
+            series = app_module.parse_command(command, title_override="Omerta S01E03")
+        self.assertEqual(option(movie, "--save-name"), "The Odyssey (2026) YTS")
+        self.assertEqual(
+            option(movie, "--save-dir"), str(app_module.DOWNLOAD_DIR / "The Odyssey (2026)")
+        )
+        self.assertEqual(option(series, "--save-name"), "Omerta S01E03 YTS")
+        self.assertEqual(option(series, "--save-dir"), str(app_module.DOWNLOAD_DIR))
+
     def test_extension_submit_applies_meta(self):
         with (
             mock.patch.object(app_module, "EXT_TOKEN", "token"),
@@ -451,6 +490,10 @@ class SettingsAndQueueTests(unittest.TestCase):
                         "uploader_tag": "YTS",
                         "resolution_tag": False,
                         "auto_start": True,
+                        "folder_movies": True,
+                        "folder_series": False,
+                        "folder_uploader_tag": False,
+                        "folder_resolution_tag": False,
                     },
                 )
 
@@ -794,6 +837,26 @@ class JobStreamEditTests(unittest.TestCase):
             {"audio": "id=^(15|16)$:for=all", "subtitle": "for=all"},
         )
 
+    def test_edit_streams_endpoint_uses_selector_overrides(self):
+        command = 'N_m3u8DL-RE.exe "https://example.com/index.mpd"'
+        job = app_module.Job(command, ["N_m3u8DL-RE", "https://example.com/index.mpd"])
+        with (
+            mock.patch.object(app_module, "_jobs", {job.id: job}),
+            mock.patch.object(app_module, "fetch_manifest_text", return_value=None),
+        ):
+            response = app_module.app.test_client().post(
+                f"/api/jobs/{job.id}/streams",
+                json={
+                    "tracks": {"audio": ["15"]},
+                    "selectors": {"audio": "for=all", "subtitle": "for=all"},
+                },
+            )
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(
+            response.get_json()["selectors"],
+            {"audio": "for=all", "subtitle": "for=all"},
+        )
+
     def test_edit_streams_endpoint_updates_queued_job(self):
         command = 'N_m3u8DL-RE.exe "https://example.com/index.mpd" -sv lang=eng'
         job = app_module.Job(command, ["N_m3u8DL-RE", "-sv", "lang=eng"])
@@ -930,8 +993,45 @@ class EffectiveResolutionTests(unittest.TestCase):
             job.started = app_module.time.time()
             result = app_module.apply_effective_resolution(job)
         new_name = "The Odyssey (2026) 720p YTS"
+        folder_name = "The Odyssey (2026)"
         self.assertEqual(result, new_name)
         self.assertEqual(job.title, new_name)
+        self.assertEqual(job.folder_name, folder_name)
+        self.assertTrue((directory / folder_name / f"{new_name}.mkv").exists())
+
+    def test_apply_effective_resolution_uses_folder_tag_settings(self):
+        directory = Path(tempfile.mkdtemp(dir=app_module.DOWNLOAD_DIR))
+        settings_dir = Path(tempfile.mkdtemp(dir=app_module.DOWNLOAD_DIR))
+        self.addCleanup(shutil.rmtree, directory, True)
+        self.addCleanup(shutil.rmtree, settings_dir, True)
+        settings_path = settings_dir / ".settings.json"
+        settings_path.write_text(
+            json.dumps(
+                {
+                    "uploader_tag": "YTS",
+                    "resolution_tag": True,
+                    "folder_uploader_tag": True,
+                    "folder_resolution_tag": True,
+                }
+            ),
+            encoding="utf-8",
+        )
+        old_name = "The Odyssey (2026) YTS"
+        output_dir = directory / old_name
+        output_dir.mkdir()
+        (output_dir / f"{old_name}.mkv").write_bytes(b"fake")
+        argv = ["N_m3u8DL-RE", "--save-dir", str(output_dir), "--save-name", old_name]
+        with (
+            mock.patch.object(app_module, "SETTINGS_FILE", settings_path),
+            mock.patch.object(app_module, "probe_video_resolution", return_value="720p"),
+        ):
+            job = app_module.Job("command", argv)
+            self.addCleanup(job.close_log)
+            job.started = app_module.time.time()
+            result = app_module.apply_effective_resolution(job)
+        new_name = "The Odyssey (2026) 720p YTS"
+        self.assertEqual(result, new_name)
+        self.assertEqual(job.folder_name, new_name)
         self.assertTrue((directory / new_name / f"{new_name}.mkv").exists())
 
     def test_apply_effective_resolution_skips_when_disabled(self):
@@ -1016,6 +1116,53 @@ class StaticAssetTests(unittest.TestCase):
         self.assertIn("job.status === 'needs_selection'", js)
         self.assertIn("edit.probeHint", js)
         self.assertIn("phase.needsSelection", i18n)
+
+    def test_all_streams_buttons_present(self):
+        js = app_module.STATIC_DIR.joinpath("app.js").read_text(encoding="utf-8")
+        i18n = app_module.STATIC_DIR.joinpath("i18n.js").read_text(encoding="utf-8")
+        css = app_module.STATIC_DIR.joinpath("style.css").read_text(encoding="utf-8")
+        self.assertIn("action.allAudio", js)
+        self.assertIn("action.allSubs", js)
+        self.assertIn("draft.all[kind]", js)
+        self.assertIn("selectors: Object.fromEntries", js)
+        self.assertEqual(i18n.count("'action.allAudio':"), 3)
+        self.assertEqual(i18n.count("'action.allSubs':"), 3)
+        self.assertEqual(i18n.count("'edit.allHint':"), 3)
+        self.assertIn(".track-quick", css)
+
+    def test_options_expose_folder_naming_controls(self):
+        html = app_module.app.test_client().get("/options").get_data(as_text=True)
+        js = app_module.STATIC_DIR.joinpath("options.js").read_text(encoding="utf-8")
+        i18n = app_module.STATIC_DIR.joinpath("i18n.js").read_text(encoding="utf-8")
+        for control in (
+            "folderMovies",
+            "folderSeries",
+            "folderUploaderTag",
+            "folderResolutionTag",
+        ):
+            self.assertIn(f'id="{control}"', html)
+        self.assertIn("folder_movies: folderMoviesEl.checked", js)
+        self.assertIn("folder_series: folderSeriesEl.checked", js)
+        self.assertIn("folder_uploader_tag: folderUploaderEl.checked", js)
+        self.assertIn("folder_resolution_tag: folderResolutionEl.checked", js)
+        for key in (
+            "options.folderGroup",
+            "options.folderMovies",
+            "options.folderSeries",
+            "options.folderUploaderTag",
+            "options.folderResolutionTag",
+            "options.folderNamesHelp",
+        ):
+            self.assertEqual(i18n.count(f"'{key}':"), 3)
+
+    def test_docker_uses_ffmpeg9_for_dovi(self):
+        root = Path(app_module.__file__).resolve().parent
+        dockerfile = root.joinpath("Dockerfile").read_text(encoding="utf-8")
+        self.assertIn(
+            "ffmpeg-n9.0-latest-linux64-gpl-9.0.tar.xz", dockerfile
+        )
+        self.assertIn("FFMPEG_BINARY=/usr/local/bin/ffmpeg", dockerfile)
+        self.assertNotIn("unzip ffmpeg libstdc++6", dockerfile)
 
 
 if __name__ == "__main__":

@@ -39,9 +39,10 @@ Files are stored in the folder you mount at `/downloads`.
 4. The homepage keeps the selected streams listed under each task and shows progress for the active stream only. A completed stream stays at 100% until the next stream starts. Overall progress is averaged over all selected streams and never moves backwards. Use **Log ↗** on a task to open the detailed live log when you want it.
 5. The log page shows the selected streams and compact progress per stream. Per-segment and stream status lines (merging, decrypting, processing completed, finalizing) are filtered out to keep memory use low.
 6. Under **Files** you can find, download or delete finished `.mkv` files.
-7. Use **Options** to set an uploader tag and to enable or disable automatic resolution tags. Extension titles become `Title (year) 1080p Uploader` or `Series S01E03 1080p Uploader`. The resolution is measured from the downloaded file with `ffprobe` after completion, so the final name always matches the effective downloaded resolution.
+7. Use **Options** to set an uploader tag, resolution tags and folder rules. By default movies get a clean title folder (`Title (year)/Title (year) 1080p Uploader.mkv`) and series stay directly in `/downloads` (`Series S01E03 1080p Uploader.mkv`). A folder can optionally include the uploader tag and resolution; the file name always keeps them when enabled. The resolution is measured from the downloaded file with `ffprobe` after completion, so the final name always matches the effective downloaded resolution.
 8. Use **Queue** to add a job without starting it. Queued jobs appear in both the queue list and the task list; **Start queue** fills the available slots up to `MAX_CONCURRENT` and keeps starting the next queued job whenever a slot frees, until the queue is empty.
 9. In **Options**, turn off **Start downloads immediately** to pause new submissions globally. They are queued instead of starting; **Start queue** remains the manual override.
+10. The Docker image bundles FFmpeg 9, so Dolby Vision (`dvh1`) downloads are muxed normally instead of being left as separate video and audio files.
 
 Active jobs live in the container memory. Finished jobs and their filtered logs are saved under `/downloads/.logs`, so a log can be reopened after the download finishes and even after a container restart. Settings live in `/settings/settings.json`, outside the downloads mount. **Clear history** deletes the saved logs but never the settings. Files remain on disk as long as the `/downloads` mount is correct.
 
@@ -54,7 +55,7 @@ Copy `.env.example` to `.env` when using Docker Compose. Fill in only what you n
 | `TZ` | Container time zone | `Europe/Brussels` in the example |
 | `MAX_CONCURRENT` | Number of downloads that can run at the same time | `3` |
 | `LOG_DIR` | Folder for saved logs and job history | `/downloads/.logs` |
-| `SETTINGS_DIR` | Folder for `settings.json` with the uploader tag, resolution and auto-start settings | `/settings` |
+| `SETTINGS_DIR` | Folder for `settings.json` with the uploader tag, resolution, folder and auto-start settings | `/settings` |
 | `WEB_USER` and `WEB_PASSWORD` | Basic login. Leave both empty to disable login protection. | empty |
 | `EXT_TOKEN` | Secret token for the browser extension. Only needed if you want to start downloads from the extension. | empty |
 

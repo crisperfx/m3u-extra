@@ -239,7 +239,30 @@ function buildQueueEditor(job) {
   const draft = queueDrafts[job.id] || (hasTracks
     ? { mode: 'tracks', tracks: initialTracks(job) }
     : { mode: 'selector', ...(job.selectors || {}) });
+  if (!draft.all) draft.all = {};
   queueDrafts[job.id] = draft;
+
+  const quick = document.createElement('div');
+  quick.className = 'track-quick';
+  for (const [kind, labelKey] of [['audio', 'action.allAudio'], ['subtitle', 'action.allSubs']]) {
+    const active = draft.mode === 'tracks' ? !!draft.all[kind] : draft[kind] === 'for=all';
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = `btn tiny subtle${active ? ' active' : ''}`;
+    btn.textContent = T(labelKey);
+    btn.setAttribute('aria-pressed', String(active));
+    btn.onclick = () => {
+      if (draft.mode === 'tracks') {
+        draft.all[kind] = !draft.all[kind];
+      } else {
+        draft[kind] = draft[kind] === 'for=all' ? '' : 'for=all';
+      }
+      queueDrafts[job.id] = draft;
+      renderQueue(lastJobs);
+    };
+    quick.append(btn);
+  }
+  wrap.append(quick);
 
   if (draft.mode === 'tracks' && hasTracks) {
     const hint = document.createElement('div');
@@ -257,13 +280,20 @@ function buildQueueEditor(job) {
       label.className = 'track-group-title';
       label.textContent = T(labelKey);
       group.append(label);
+      if (draft.all[kind]) {
+        const allNote = document.createElement('div');
+        allNote.className = 'edit-hint';
+        allNote.textContent = T('edit.allHint');
+        group.append(allNote);
+      }
       for (const item of items) {
         const id = String(item.track);
         const row = document.createElement('label');
         row.className = 'track-row';
         const box = document.createElement('input');
         box.type = 'checkbox';
-        box.checked = draft.tracks[kind].includes(id);
+        box.checked = !!draft.all[kind] || draft.tracks[kind].includes(id);
+        box.disabled = !!draft.all[kind];
         box.onchange = () => {
           const values = new Set(draft.tracks[kind]);
           if (box.checked) values.add(id); else values.delete(id);
@@ -311,7 +341,12 @@ function buildQueueEditor(job) {
       ? {
           tracks: Object.fromEntries(QUEUE_FIELDS
             .filter(([kind]) => Array.isArray((draft.tracks || {})[kind]))
-            .map(([kind]) => [kind, draft.tracks[kind]]))
+            .map(([kind]) => [kind, draft.tracks[kind]])),
+          selectors: Object.fromEntries(
+            ['audio', 'subtitle']
+              .filter(kind => draft.all[kind])
+              .map(kind => [kind, 'for=all'])
+          )
         }
       : Object.fromEntries(QUEUE_FIELDS.map(([kind]) => [kind, draft[kind] || '']));
     try {

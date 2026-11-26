@@ -114,10 +114,13 @@ body {
 .queue-field input:focus { border-color: var(--accent); box-shadow: 0 0 0 2px rgba(124, 140, 255, .16); }
 .queue-actions { display: flex; gap: 8px; margin-top: 10px; }
 .edit-hint { color: var(--muted); font-size: 11px; margin-bottom: 8px; }
+.track-quick { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 8px; }
+.track-quick .btn.active { border-color: var(--accent); background: rgba(124, 140, 255, .18); color: var(--text); }
 .track-group { margin-top: 8px; }
 .track-group-title { color: var(--accent-2); font-size: 10px; letter-spacing: .12em; text-transform: uppercase; margin-bottom: 4px; }
 .track-row { display: flex; align-items: center; gap: 8px; padding: 3px 0; font-size: 11px; cursor: pointer; }
 .track-row input { accent-color: var(--accent); }
+.track-row input:disabled { opacity: .6; }
 .track-row span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 textarea {

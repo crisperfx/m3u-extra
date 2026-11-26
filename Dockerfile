@@ -43,12 +43,17 @@ ENV PYTHONUNBUFFERED=1 \
     DOWNLOAD_DIR=/downloads \
     SETTINGS_DIR=/settings \
     NDL_BINARY=/usr/local/bin/N_m3u8DL-RE \
-    FFMPEG_BINARY=/usr/bin/ffmpeg \
+    FFMPEG_BINARY=/usr/local/bin/ffmpeg \
     MP4DECRYPT_BINARY=/usr/local/bin/mp4decrypt
 
 RUN apt-get update \
- && apt-get install -y --no-install-recommends ca-certificates curl unzip ffmpeg libstdc++6 \
- && rm -rf /var/lib/apt/lists/*
+  && apt-get install -y --no-install-recommends ca-certificates curl unzip xz-utils libstdc++6 \
+  && curl -fsSL "https://github.com/FFmpeg-Builds/FFmpeg-Builds/releases/download/latest/ffmpeg-n9.0-latest-linux64-gpl-9.0.tar.xz" -o /tmp/ffmpeg.tar.xz \
+  && mkdir -p /tmp/ffmpeg \
+  && tar -xJf /tmp/ffmpeg.tar.xz -C /tmp/ffmpeg --strip-components=2 \
+  && cp /tmp/ffmpeg/ffmpeg /tmp/ffmpeg/ffprobe /usr/local/bin/ \
+  && chmod 0755 /usr/local/bin/ffmpeg /usr/local/bin/ffprobe \
+  && rm -rf /tmp/ffmpeg /tmp/ffmpeg.tar.xz /var/lib/apt/lists/*
 
 COPY --from=ndl-build /out/N_m3u8DL-RE /usr/local/bin/N_m3u8DL-RE
 

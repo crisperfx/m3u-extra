@@ -43,10 +43,19 @@ except OSError:
     pass
 SETTINGS_FILE = Path(os.environ.get("SETTINGS_FILE", str(SETTINGS_DIR / "settings.json")))
 LEGACY_SETTINGS_FILE = DOWNLOAD_DIR / ".settings.json"
-DEFAULT_SETTINGS = {"uploader_tag": "", "resolution_tag": True, "auto_start": True}
+DEFAULT_SETTINGS = {
+    "uploader_tag": "",
+    "resolution_tag": True,
+    "auto_start": True,
+    "folder_movies": True,
+    "folder_series": False,
+    "folder_uploader_tag": False,
+    "folder_resolution_tag": False,
+}
 JOB_ID_PATTERN = re.compile(r"^[0-9a-f]{12}$")
 SUBTITLE_FILTER_ZZZ = re.compile(r"^subtitle_language\s*:\s*zzz$", re.I)
 RESOLUTION_TAG_PATTERN = re.compile(r"(?<!\S)\d{3,4}p(?!\S)", re.I)
+SERIES_TITLE_PATTERN = re.compile(r"(?<!\S)S\d{1,3}E\d{1,4}(?!\S)", re.I)
 VIDEO_SUFFIXES = {".mkv", ".mp4", ".mov", ".webm", ".m4v", ".ts"}
 
 
@@ -109,6 +118,10 @@ def load_settings():
     settings["uploader_tag"] = clean_tag(data.get("uploader_tag"))
     settings["resolution_tag"] = bool(data.get("resolution_tag", True))
     settings["auto_start"] = bool(data.get("auto_start", True))
+    settings["folder_movies"] = bool(data.get("folder_movies", True))
+    settings["folder_series"] = bool(data.get("folder_series", False))
+    settings["folder_uploader_tag"] = bool(data.get("folder_uploader_tag", False))
+    settings["folder_resolution_tag"] = bool(data.get("folder_resolution_tag", False))
     return settings
 
 
@@ -121,6 +134,14 @@ def save_settings(data):
             current["resolution_tag"] = bool(data.get("resolution_tag"))
         if "auto_start" in data:
             current["auto_start"] = bool(data.get("auto_start"))
+        if "folder_movies" in data:
+            current["folder_movies"] = bool(data.get("folder_movies"))
+        if "folder_series" in data:
+            current["folder_series"] = bool(data.get("folder_series"))
+        if "folder_uploader_tag" in data:
+            current["folder_uploader_tag"] = bool(data.get("folder_uploader_tag"))
+        if "folder_resolution_tag" in data:
+            current["folder_resolution_tag"] = bool(data.get("folder_resolution_tag"))
     with _settings_lock:
         SETTINGS_FILE.parent.mkdir(parents=True, exist_ok=True)
         SETTINGS_FILE.write_text(
@@ -340,6 +361,35 @@ def title_from_meta(meta):
     return title
 
 
+def is_series_title(name):
+    return bool(SERIES_TITLE_PATTERN.search(str(name or "")))
+
+
+def folder_tags(settings, resolution=None):
+    uploader = clean_tag(settings.get("uploader_tag"))
+    tags = []
+    if resolution and settings.get("folder_resolution_tag"):
+        tags.append(resolution)
+    if uploader and settings.get("folder_uploader_tag"):
+        tags.append(uploader)
+    return tags
+
+
+def job_folder_name(save_dir, save_name, settings=None):
+    if not save_name or save_dir == DOWNLOAD_DIR:
+        return None
+    settings = settings or load_settings()
+    uploader = clean_tag(settings.get("uploader_tag"))
+    base = strip_name_tags(save_name, [uploader])
+    candidates = {
+        safe_name(base, limit=80),
+        safe_name(save_name, limit=80),
+    }
+    if uploader:
+        candidates.add(safe_name(append_name_tags(base, [uploader]), limit=80))
+    return save_dir.name if save_dir.name in candidates else None
+
+
 def append_name_tags(name, tags):
     if not name:
         return name
@@ -502,11 +552,14 @@ def apply_effective_resolution(job):
     uploader = clean_tag(settings.get("uploader_tag"))
     old_name = job.save_name or video.stem
     base_name = strip_name_tags(old_name, [resolution, uploader])
-    new_name = append_name_tags(base_name, [resolution, uploader])
-    if not new_name or new_name == old_name:
-        return None
+    base_name = re.sub(RESOLUTION_TAG_PATTERN, "", base_name)
+    base_name = re.sub(r"\s+", " ", base_name).strip() or "download"
+    file_tags = [resolution]
+    if uploader:
+        file_tags.append(uploader)
+    new_name = append_name_tags(base_name, file_tags)
     directory = video.parent
-    renamed = False
+    renamed_file = False
     for path in sorted(directory.iterdir()):
         if not path.is_file():
             continue
@@ -516,25 +569,36 @@ def apply_effective_resolution(job):
                 continue
             try:
                 path.rename(target)
-                renamed = True
+                renamed_file = True
             except OSError:
                 pass
-    if not renamed:
+    renamed_folder = False
+    target_folder_name = None
+    if job.folder_name and directory.name == job.folder_name:
+        target_folder_name = safe_name(
+            append_name_tags(base_name, folder_tags(settings, resolution)), limit=80
+        )
+        if target_folder_name and target_folder_name != directory.name:
+            target_dir = directory.with_name(target_folder_name)
+            if not target_dir.exists():
+                try:
+                    directory.rename(target_dir)
+                    job.save_dir = target_dir
+                    job.folder_name = target_folder_name
+                    renamed_folder = True
+                except OSError:
+                    pass
+    if not renamed_file and not renamed_folder:
         return None
-    if directory.name == safe_name(old_name, limit=80):
-        target_dir = directory.with_name(safe_name(new_name, limit=80))
-        if not target_dir.exists():
-            try:
-                directory.rename(target_dir)
-                job.save_dir = target_dir
-            except OSError:
-                pass
-    job.save_name = new_name
-    job.title = new_name
-    message = f"[webserver] Bestandsnaam bijgewerkt naar {new_name}\n"
+    if renamed_file:
+        job.save_name = new_name
+        job.title = new_name
+        message = f"[webserver] Bestandsnaam bijgewerkt naar {new_name}\n"
+    else:
+        message = f"[webserver] Mapnaam bijgewerkt naar {target_folder_name}\n"
     job.append_log(message)
     job.output.put(("log", message))
-    return new_name
+    return new_name if renamed_file else target_folder_name
 
 
 def extract_title(argv):
@@ -1078,15 +1142,23 @@ def parse_command(raw, title_override=None):
 
     base_dir = safe_dir(save_dir_raw)
     override = safe_name(title_override, limit=120) if title_override else None
-    save_name = override or (
+    base_name = override or (
         safe_name(save_name_raw) if save_name_raw is not None else None
     )
     settings = load_settings()
-    tags = []
-    if settings["uploader_tag"]:
-        tags.append(settings["uploader_tag"])
-    save_name = append_name_tags(save_name, tags)
-    save_dir = base_dir / safe_name(save_name, limit=80) if save_name else base_dir
+    uploader = clean_tag(settings.get("uploader_tag"))
+    file_tags = [uploader] if uploader else []
+    save_name = append_name_tags(base_name, file_tags)
+    use_folder = (
+        settings.get("folder_series")
+        if base_name and is_series_title(base_name)
+        else settings.get("folder_movies")
+    )
+    if use_folder and base_name:
+        folder_name = append_name_tags(base_name, folder_tags(settings))
+        save_dir = base_dir / safe_name(folder_name, limit=80)
+    else:
+        save_dir = base_dir
     save_dir.mkdir(parents=True, exist_ok=True)
 
     argv = [NDL_BINARY] + args + [
@@ -1122,6 +1194,7 @@ class Job:
         except ValueError:
             self.save_dir = DOWNLOAD_DIR
         self.save_name = option_value(argv, "--save-name")
+        self.folder_name = job_folder_name(self.save_dir, self.save_name)
         self.output = queue.Queue()
         self.streams = StreamCollector()
         self.progress_streams = {"video": [], "audio": [], "subtitle": []}
@@ -1316,6 +1389,7 @@ class Job:
             self.title = extract_title(argv)
             self.save_dir = safe_dir(option_value(argv, "--save-dir"))
             self.save_name = option_value(argv, "--save-name")
+            self.folder_name = job_folder_name(self.save_dir, self.save_name)
             self.resolution_tag = bool(load_settings().get("resolution_tag"))
             if self.status == "needs_selection":
                 self.needs_stream_selection = False
@@ -1730,6 +1804,11 @@ def update_job_streams(job_id):
             }
         else:
             selectors = {kind: data[kind] for kind in STREAM_OPTIONS if kind in data}
+        overrides = data.get("selectors")
+        if isinstance(overrides, dict):
+            for kind, value in overrides.items():
+                if kind in STREAM_OPTIONS and str(value).strip():
+                    selectors[kind] = value
         if not selectors:
             return jsonify({"error": "Geen streamselecties opgegeven"}), 400
         was_probe = job.status == "needs_selection"
