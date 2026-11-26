@@ -62,6 +62,9 @@ DV_VIDEO_CODEC_PREFIXES = {"dvh1", "dvhe", "dva1", "dvav"}
 NON_DV_VIDEO_CODEC_PREFIXES = {"avc1", "avc3", "hvc1", "hev1", "vp09", "av01"}
 CODEC_ATTRIBUTE_PATTERN = re.compile(r'codecs=[\"\']([^\"\']+)[\"\']', re.I)
 DV_VIDEO_DROP_FILTER = "codecs=^(dvh1|dvhe|dva1|dvav)"
+DV_STREAM_CODEC_PATTERN = re.compile(r"\b(dvh1|dvhe|dva1|dvav)\b", re.I)
+NON_DV_STREAM_CODEC_PATTERN = re.compile(r"\b(avc1|avc3|hvc1|hev1|vp09|av01)\b", re.I)
+STREAM_BITRATE_PATTERN = re.compile(r"(\d+(?:\.\d+)?)\s*Kbps", re.I)
 
 
 def log_file_path(job_id):
@@ -455,6 +458,67 @@ def selector_for_tracks(tracks):
         return "for=all"
     values.sort(key=lambda value: (0, int(value)) if value.isdigit() else (1, value))
     return "id=^(" + "|".join(re.escape(value) for value in values) + ")$:for=all"
+
+
+def selected_track_ids(value):
+    match = re.search(r"id=(?:\^\()?([^):]+)", str(value or ""), re.I)
+    if not match:
+        return set()
+    return {item for item in re.findall(r"[A-Za-z0-9_=-]+", match.group(1)) if item}
+
+
+def stream_text(stream):
+    if not isinstance(stream, dict):
+        return ""
+    return f"{stream.get('details', '')} {stream.get('raw', '')}"
+
+
+def stream_is_dv(stream):
+    return bool(DV_STREAM_CODEC_PATTERN.search(stream_text(stream)))
+
+
+def stream_is_non_dv(stream):
+    return bool(NON_DV_STREAM_CODEC_PATTERN.search(stream_text(stream)))
+
+
+def stream_bitrate(stream):
+    match = STREAM_BITRATE_PATTERN.search(stream_text(stream))
+    return float(match.group(1)) if match else 0.0
+
+
+def prefer_non_dv_selectors(selectors, video_streams):
+    value = selectors.get("video")
+    if not value or DV_STREAM_CODEC_PATTERN.search(str(value)):
+        return selectors
+    selected_ids = selected_track_ids(value)
+    if not selected_ids:
+        return selectors
+    streams = [item for item in (video_streams or []) if isinstance(item, dict)]
+    selected = [item for item in streams if str(item.get("track")) in selected_ids]
+    if not any(stream_is_dv(item) for item in selected):
+        return selectors
+    alternatives = [item for item in streams if stream_is_non_dv(item)]
+    if not alternatives:
+        return selectors
+    resolutions = []
+    for item in selected:
+        resolution = item.get("resolution")
+        if resolution not in resolutions:
+            resolutions.append(resolution)
+    tracks = []
+    for resolution in resolutions:
+        pool = [item for item in alternatives if item.get("resolution") == resolution]
+        if not pool:
+            pool = alternatives
+        best = max(pool, key=stream_bitrate)
+        track = str(best.get("track") or "").strip()
+        if track and track not in tracks:
+            tracks.append(track)
+    if not tracks:
+        return selectors
+    result = dict(selectors)
+    result["video"] = selector_for_tracks(tracks)
+    return result
 
 
 def rewrite_stream_selectors(command, selectors):
@@ -889,22 +953,39 @@ def probe_argv(argv):
     return tokens
 
 
-def is_dash_input(tokens):
+def manifest_input_pairs(tokens):
     for token in tokens:
         if token.startswith("-"):
             continue
-        candidate = urlparse(token).path or token
-        if candidate.lower().endswith(".mpd"):
+        yield token, token
+        if "://" not in token:
+            continue
+        try:
+            query = parse_qsl(urlparse(token).query, keep_blank_values=True)
+        except ValueError:
+            continue
+        for key, value in query:
+            if key.lower() in ("manifesturl", "manifest", "url", "src") and "://" in value:
+                yield token, value
+
+
+def manifest_urls(tokens):
+    for _, url in manifest_input_pairs(tokens):
+        yield url
+
+
+def is_dash_input(tokens):
+    for candidate in manifest_urls(tokens):
+        path = urlparse(candidate).path if "://" in candidate else candidate
+        if path.lower().endswith(".mpd"):
             return True
     return False
 
 
 def find_manifest_input(tokens):
-    for token in tokens:
-        if token.startswith("-"):
-            continue
-        candidate = urlparse(token).path if "://" in token else token
-        if candidate.lower().endswith(".mpd"):
+    for token, candidate in manifest_input_pairs(tokens):
+        path = urlparse(candidate).path if "://" in candidate else candidate
+        if path.lower().endswith(".mpd"):
             return token
     return None
 
@@ -1050,11 +1131,20 @@ def manifest_video_codecs(text):
 
 
 def detect_manifest_video_codecs(tokens):
-    source = find_manifest_input(tokens)
-    if not source:
-        return {"dvh1": set(), "other": set()}
-    text = fetch_manifest_text(source, extract_headers(tokens))
-    return manifest_video_codecs(text)
+    headers = extract_headers(tokens)
+    sources = []
+    for candidate in manifest_urls(tokens):
+        path = urlparse(candidate).path if "://" in candidate else candidate
+        if path.lower().endswith(".mpd") and candidate not in sources:
+            sources.append(candidate)
+    outer = find_manifest_input(tokens)
+    if outer and outer not in sources:
+        sources.append(outer)
+    for source in sources:
+        codecs = manifest_video_codecs(fetch_manifest_text(source, headers))
+        if codecs["dvh1"] or codecs["other"]:
+            return codecs
+    return {"dvh1": set(), "other": set()}
 
 
 def has_explicit_video_filter(args):
@@ -1463,6 +1553,14 @@ class Job:
         return True
 
     def update_streams(self, selectors):
+        selectors = dict(selectors)
+        if load_settings().get("avoid_dv_video", True):
+            swapped = prefer_non_dv_selectors(selectors, self.streams.video)
+            if swapped != selectors:
+                message = f"[webserver] DV-video vervangen door {swapped.get('video')}\n"
+                self.append_log(message)
+                self.output.put(("log", message))
+                selectors = swapped
         command = rewrite_stream_selectors(self.command, selectors)
         argv = parse_command(command, title_override=self.title_override)
         with _jobs_lock:

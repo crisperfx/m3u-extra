@@ -1350,6 +1350,97 @@ class DolbyVisionAvoidanceTests(unittest.TestCase):
         self.assertIn("-dv", argv)
         self.assertIn("codecs=^(dvh1|dvhe|dva1|dvav)", argv)
 
+    def test_find_manifest_input_reads_nested_manifest_url(self):
+        wrapper = (
+            "https://api.svt.se/ditto/api/v3/manifest?"
+            "manifestUrl=https%3A%2F%2Fsvt-vod-4r.akamaized.net%2Fd0%2Fworld%2F"
+            "20261117%2Fbcf8fd2c-7d22-4362-b735-3dc64999bea8%2Fdash-full.mpd"
+            "&platform=Windows%3B10%2CChrome%3B159"
+        )
+        inner = (
+            "https://svt-vod-4r.akamaized.net/d0/world/20261117/"
+            "bcf8fd2c-7d22-4362-b735-3dc64999bea8/dash-full.mpd"
+        )
+        tokens = [wrapper]
+        self.assertTrue(app_module.is_dash_input(tokens))
+        self.assertEqual(app_module.find_manifest_input(tokens), wrapper)
+        self.assertIn(inner, list(app_module.manifest_urls(tokens)))
+
+    def test_drop_dv_video_uses_nested_manifest_url(self):
+        wrapper = (
+            "https://api.svt.se/ditto/api/v3/manifest?"
+            "manifestUrl=https%3A%2F%2Fsvt-vod-4r.akamaized.net%2Fd0%2Fworld%2F"
+            "20261117%2Fbcf8fd2c-7d22-4362-b735-3dc64999bea8%2Fdash-full.mpd"
+        )
+        inner = (
+            "https://svt-vod-4r.akamaized.net/d0/world/20261117/"
+            "bcf8fd2c-7d22-4362-b735-3dc64999bea8/dash-full.mpd"
+        )
+        seen = []
+
+        def fake_fetch(url, headers):
+            seen.append(url)
+            return self.MPD_WITH_ALTERNATIVE
+
+        with (
+            mock.patch.object(app_module, "fetch_manifest_text", side_effect=fake_fetch),
+            mock.patch.object(
+                app_module,
+                "load_settings",
+                return_value=dict(app_module.DEFAULT_SETTINGS),
+            ),
+        ):
+            result = app_module.drop_dv_video_if_alternative([wrapper])
+        self.assertEqual(seen, [inner])
+        self.assertEqual(result[-2:], ["-dv", "codecs=^(dvh1|dvhe|dva1|dvav)"])
+
+    def test_prefer_non_dv_selectors_swaps_selected_dv_track(self):
+        streams = [
+            app_module.parse_stream_line(line)
+            for line in (
+                "Vid Original | 1280x720 | 4528 Kbps | 1 | dvh1.05.02 | 358 Segments | Main | ~22m52s",
+                "Vid Original | 1280x720 | 3579 Kbps | 11 | avc1.4d401f | 358 Segments | Main | ~22m52s",
+                "Vid Original | 1280x720 | 2989 Kbps | 6 | hvc1.2.4.L123.90 | 358 Segments | Main | ~22m52s",
+            )
+        ]
+        result = app_module.prefer_non_dv_selectors(
+            {"video": "id=^(1)$:for=all"}, streams
+        )
+        self.assertEqual(result["video"], "id=^(11)$:for=all")
+
+    def test_prefer_non_dv_selectors_respects_explicit_dv_codec(self):
+        streams = [
+            app_module.parse_stream_line(
+                "Vid Original | 1280x720 | 4528 Kbps | 1 | dvh1.05.02 | 358 Segments | Main | ~22m52s"
+            )
+        ]
+        selectors = {"video": "codecs=dvh1:for=best"}
+        self.assertEqual(app_module.prefer_non_dv_selectors(selectors, streams), selectors)
+
+    def test_update_streams_swaps_dv_track_after_probe(self):
+        command = 'N_m3u8DL-RE.exe "https://example.com/index.mpd"'
+        argv = app_module.parse_command(command)
+        job = app_module.Job(command, argv)
+        self.addCleanup(job.close_log)
+        job.status = "needs_selection"
+        job.streams.video = [
+            app_module.parse_stream_line(line)
+            for line in (
+                "Vid Original | 1280x720 | 4528 Kbps | 1 | dvh1.05.02 | 358 Segments | Main | ~22m52s",
+                "Vid Original | 1280x720 | 3579 Kbps | 11 | avc1.4d401f | 358 Segments | Main | ~22m52s",
+            )
+        ]
+        with (
+            mock.patch.object(app_module, "fetch_manifest_text", return_value=None),
+            mock.patch.object(
+                app_module,
+                "load_settings",
+                return_value=dict(app_module.DEFAULT_SETTINGS),
+            ),
+        ):
+            job.update_streams({"video": "id=^(1)$:for=all"})
+        self.assertIn("id=^(11)$:for=all", job.argv)
+
 
 if __name__ == "__main__":
     unittest.main()
