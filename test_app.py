@@ -664,6 +664,58 @@ class SettingsAndQueueTests(unittest.TestCase):
             self.assertEqual(response.get_json()["started"], 1)
             launch.assert_called_once()
 
+    def test_start_queue_launches_saved_probe_job(self):
+        command = 'N_m3u8DL-RE.exe "https://example.com/index.mpd"'
+        job = app_module.Job(
+            command,
+            ["N_m3u8DL-RE", "https://example.com/index.mpd"],
+            probe_streams=True,
+        )
+        job.status = "needs_selection"
+        job.phase = "needsSelection"
+        with (
+            mock.patch.object(app_module, "_jobs", {job.id: job}),
+            mock.patch.object(app_module, "fetch_manifest_text", return_value=None),
+            mock.patch.object(
+                app_module,
+                "load_settings",
+                return_value=dict(app_module.DEFAULT_SETTINGS),
+            ),
+            mock.patch.object(app_module.Job, "launch") as launch,
+            mock.patch.object(app_module, "_queue_pump_active", False),
+        ):
+            client = app_module.app.test_client()
+            saved = client.post(
+                f"/api/jobs/{job.id}/streams",
+                json={"tracks": {"audio": ["15"]}},
+            )
+            self.assertEqual(saved.get_json()["status"], "queued")
+            response = client.post("/api/jobs/queue/start")
+        self.assertEqual(response.get_json()["started"], 1)
+        launch.assert_called_once()
+
+    def test_delete_job_endpoint_removes_queued_job(self):
+        job = app_module.Job("N_m3u8DL-RE", ["N_m3u8DL-RE"])
+        job.status = "queued"
+        log_path = app_module.log_file_path(job.id)
+        metadata_path = app_module.metadata_file_path(job.id)
+        log_path.write_text("probe", encoding="utf-8")
+        metadata_path.write_text("{}", encoding="utf-8")
+        with mock.patch.object(app_module, "_jobs", {job.id: job}):
+            response = app_module.app.test_client().delete(f"/api/jobs/{job.id}")
+        self.assertEqual(response.status_code, 200)
+        self.assertNotIn(job.id, app_module._jobs)
+        self.assertFalse(log_path.exists())
+        self.assertFalse(metadata_path.exists())
+
+    def test_delete_job_endpoint_rejects_running_job(self):
+        job = app_module.Job("N_m3u8DL-RE", ["N_m3u8DL-RE"])
+        job.status = "running"
+        with mock.patch.object(app_module, "_jobs", {job.id: job}):
+            response = app_module.app.test_client().delete(f"/api/jobs/{job.id}")
+            self.assertEqual(response.status_code, 409)
+            self.assertIn(job.id, app_module._jobs)
+
     def test_clear_history_preserves_queued_jobs(self):
         with (
             mock.patch.object(app_module, "_jobs", {}),
@@ -905,7 +957,7 @@ class JobStreamEditTests(unittest.TestCase):
         self.assertEqual(info["selectors"], {"video": "lang=nld"})
         self.assertEqual(job.status, "queued")
 
-    def test_edit_streams_endpoint_restarts_probe_job(self):
+    def test_edit_streams_endpoint_keeps_probe_job_queued(self):
         command = 'N_m3u8DL-RE.exe "https://example.com/index.mpd"'
         job = app_module.Job(
             command,
@@ -917,19 +969,15 @@ class JobStreamEditTests(unittest.TestCase):
         with (
             mock.patch.object(app_module, "_jobs", {job.id: job}),
             mock.patch.object(app_module, "fetch_manifest_text", return_value=None),
-            mock.patch.object(
-                app_module,
-                "start_queued_job",
-                side_effect=lambda item: setattr(item, "status", "running"),
-            ) as start,
+            mock.patch.object(app_module, "start_queued_job") as start,
         ):
             response = app_module.app.test_client().post(
                 f"/api/jobs/{job.id}/streams",
                 json={"tracks": {"audio": ["15"]}},
             )
         self.assertEqual(response.status_code, 200)
-        self.assertEqual(job.status, "running")
-        start.assert_called_once_with(job)
+        self.assertEqual(job.status, "queued")
+        start.assert_not_called()
 
     def test_start_queued_job_starts_without_queue_pump(self):
         job = app_module.Job("N_m3u8DL-RE", ["N_m3u8DL-RE"])

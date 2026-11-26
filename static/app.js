@@ -400,7 +400,22 @@ function renderQueue(jobs) {
       editingJobId = editingJobId === job.id ? null : job.id;
       renderQueue(lastJobs);
     };
-    row.append(title, phase, editBtn);
+    const removeBtn = document.createElement('button');
+    removeBtn.className = 'btn tiny danger';
+    removeBtn.textContent = T('action.removeQueue');
+    removeBtn.onclick = async () => {
+      removeBtn.disabled = true;
+      try {
+        await api(`/api/jobs/${job.id}`, { method: 'DELETE' });
+        delete queueDrafts[job.id];
+        if (editingJobId === job.id) editingJobId = null;
+        await refreshJobs();
+      } catch (e) {
+        showError(e.message);
+        removeBtn.disabled = false;
+      }
+    };
+    row.append(title, phase, editBtn, removeBtn);
     li.append(row);
     if (editingJobId === job.id) li.append(buildQueueEditor(job));
     queueEl.append(li);

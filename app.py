@@ -1903,6 +1903,25 @@ def clear_jobs():
     return jsonify({"ok": True})
 
 
+@app.delete("/api/jobs/<job_id>")
+def delete_job(job_id):
+    if not valid_job_id(job_id):
+        abort(404)
+    with _jobs_lock:
+        job = _jobs.get(job_id)
+        if job is not None and job.status == "running":
+            return jsonify({"error": "Actieve taak kan niet worden verwijderd"}), 409
+        if job is not None:
+            job.close_log()
+            del _jobs[job_id]
+    for path in (log_file_path(job_id), metadata_file_path(job_id)):
+        try:
+            path.unlink()
+        except OSError:
+            pass
+    return jsonify({"ok": True})
+
+
 @app.get("/api/jobs/<job_id>")
 def job_detail(job_id):
     return jsonify(get_job(job_id).info())
@@ -2023,10 +2042,7 @@ def update_job_streams(job_id):
                     selectors[kind] = value
         if not selectors:
             return jsonify({"error": "Geen streamselecties opgegeven"}), 400
-        was_probe = job.status == "needs_selection"
         info = job.update_streams(selectors)
-        if was_probe:
-            start_queued_job(job)
         return jsonify(info)
     except RuntimeError as exc:
         return jsonify({"error": str(exc)}), 409
