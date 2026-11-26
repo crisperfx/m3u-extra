@@ -51,12 +51,17 @@ DEFAULT_SETTINGS = {
     "folder_series": False,
     "folder_uploader_tag": False,
     "folder_resolution_tag": False,
+    "avoid_dv_video": True,
 }
 JOB_ID_PATTERN = re.compile(r"^[0-9a-f]{12}$")
 SUBTITLE_FILTER_ZZZ = re.compile(r"^subtitle_language\s*:\s*zzz$", re.I)
 RESOLUTION_TAG_PATTERN = re.compile(r"(?<!\S)\d{3,4}p(?!\S)", re.I)
 SERIES_TITLE_PATTERN = re.compile(r"(?<!\S)S\d{1,3}E\d{1,4}(?!\S)", re.I)
 VIDEO_SUFFIXES = {".mkv", ".mp4", ".mov", ".webm", ".m4v", ".ts"}
+DV_VIDEO_CODEC_PREFIXES = {"dvh1", "dvhe", "dva1", "dvav"}
+NON_DV_VIDEO_CODEC_PREFIXES = {"avc1", "avc3", "hvc1", "hev1", "vp09", "av01"}
+CODEC_ATTRIBUTE_PATTERN = re.compile(r'codecs=[\"\']([^\"\']+)[\"\']', re.I)
+DV_VIDEO_DROP_FILTER = "codecs=^(dvh1|dvhe|dva1|dvav)"
 
 
 def log_file_path(job_id):
@@ -123,6 +128,7 @@ def load_settings():
     settings["folder_series"] = bool(data.get("folder_series", False))
     settings["folder_uploader_tag"] = bool(data.get("folder_uploader_tag", False))
     settings["folder_resolution_tag"] = bool(data.get("folder_resolution_tag", False))
+    settings["avoid_dv_video"] = bool(data.get("avoid_dv_video", True))
     return settings
 
 
@@ -143,6 +149,8 @@ def save_settings(data):
             current["folder_uploader_tag"] = bool(data.get("folder_uploader_tag"))
         if "folder_resolution_tag" in data:
             current["folder_resolution_tag"] = bool(data.get("folder_resolution_tag"))
+        if "avoid_dv_video" in data:
+            current["avoid_dv_video"] = bool(data.get("avoid_dv_video"))
     with _settings_lock:
         SETTINGS_FILE.parent.mkdir(parents=True, exist_ok=True)
         SETTINGS_FILE.write_text(
@@ -1027,6 +1035,52 @@ def detect_manifest_resolution(tokens):
     return parse_manifest_resolution(fetch_manifest_text(source, extract_headers(tokens)))
 
 
+def manifest_video_codecs(text):
+    result = {"dvh1": set(), "other": set()}
+    if not text:
+        return result
+    for match in CODEC_ATTRIBUTE_PATTERN.finditer(text):
+        for codec in match.group(1).split(","):
+            name = codec.strip().lower().split(".", 1)[0]
+            if name in DV_VIDEO_CODEC_PREFIXES:
+                result["dvh1"].add(name)
+            elif name in NON_DV_VIDEO_CODEC_PREFIXES:
+                result["other"].add(name)
+    return result
+
+
+def detect_manifest_video_codecs(tokens):
+    source = find_manifest_input(tokens)
+    if not source:
+        return {"dvh1": set(), "other": set()}
+    text = fetch_manifest_text(source, extract_headers(tokens))
+    return manifest_video_codecs(text)
+
+
+def has_explicit_video_filter(args):
+    for index, token in enumerate(args):
+        if token in ("-sv", "--select-video") and index + 1 < len(args):
+            value = args[index + 1].lower()
+            if "id=" in value or "codecs=" in value:
+                return True
+        if token.startswith("--select-video="):
+            value = token.split("=", 1)[1].lower()
+            if "id=" in value or "codecs=" in value:
+                return True
+    return False
+
+
+def drop_dv_video_if_alternative(args):
+    if not load_settings().get("avoid_dv_video", True):
+        return args
+    if has_option(args, {"-dv", "--drop-video"}) or has_explicit_video_filter(args):
+        return args
+    codecs = detect_manifest_video_codecs(args)
+    if codecs["dvh1"] and codecs["other"]:
+        return list(args) + ["-dv", DV_VIDEO_DROP_FILTER]
+    return args
+
+
 def format_indices(indices):
     values = sorted(set(indices))
     if not values:
@@ -1168,6 +1222,7 @@ def parse_command(raw, title_override=None):
     args = sanitize_manifest_filters(args)
     args = inject_dash_ad_filters(args)
     args = normalize_mkv_muxer(args)
+    args = drop_dv_video_if_alternative(args)
 
     base_dir = safe_dir(save_dir_raw)
     override = safe_name(title_override, limit=120) if title_override else None

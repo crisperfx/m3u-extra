@@ -507,6 +507,7 @@ class SettingsAndQueueTests(unittest.TestCase):
                         "folder_series": False,
                         "folder_uploader_tag": False,
                         "folder_resolution_tag": False,
+                        "avoid_dv_video": True,
                     },
                 )
 
@@ -1173,7 +1174,7 @@ class StaticAssetTests(unittest.TestCase):
         js = app_module.STATIC_DIR.joinpath("options.js").read_text(encoding="utf-8")
         css = app_module.STATIC_DIR.joinpath("style.css").read_text(encoding="utf-8")
         i18n = app_module.STATIC_DIR.joinpath("i18n.js").read_text(encoding="utf-8")
-        self.assertEqual(html.count('class="options-group"'), 4)
+        self.assertEqual(html.count('class="options-group"'), 5)
         self.assertIn('class="options-actions"', html)
         self.assertIn('data-i18n="options.subtitle">Instellingen</span>', html)
         self.assertIn('class="option-item', html)
@@ -1188,12 +1189,14 @@ class StaticAssetTests(unittest.TestCase):
             "folderSeries",
             "folderUploaderTag",
             "folderResolutionTag",
+            "avoidDvVideo",
         ):
             self.assertIn(f'id="{control}"', html)
         self.assertIn("folder_movies: folderMoviesEl.checked", js)
         self.assertIn("folder_series: folderSeriesEl.checked", js)
         self.assertIn("folder_uploader_tag: folderUploaderEl.checked", js)
         self.assertIn("folder_resolution_tag: folderResolutionEl.checked", js)
+        self.assertIn("avoid_dv_video: avoidDvVideoEl.checked", js)
         for key in (
             "options.groupNames",
             "options.groupNamesHelp",
@@ -1205,6 +1208,10 @@ class StaticAssetTests(unittest.TestCase):
             "options.folderUploaderTag",
             "options.folderResolutionTag",
             "options.folderNamesHelp",
+            "options.dvGroup",
+            "options.dvGroupHelp",
+            "options.avoidDvVideo",
+            "options.avoidDvVideoHelp",
             "options.groupStart",
         ):
             self.assertEqual(i18n.count(f"'{key}':"), 3)
@@ -1222,6 +1229,126 @@ class StaticAssetTests(unittest.TestCase):
         self.assertIn("ln -sf /usr/local/bin/ffmpeg /usr/bin/ffmpeg", dockerfile)
         self.assertIn("/usr/bin/ffmpeg -version", dockerfile)
         self.assertNotIn("unzip ffmpeg libstdc++6", dockerfile)
+
+
+class DolbyVisionAvoidanceTests(unittest.TestCase):
+    MPD_WITH_ALTERNATIVE = """
+    <MPD>
+      <Period id="main">
+        <AdaptationSet mimeType="video/mp4">
+          <Representation codecs="dvh1.05.02.06,ec-3" />
+          <Representation codecs="avc1.640028,mp4a.40.2" />
+        </AdaptationSet>
+      </Period>
+    </MPD>
+    """
+    MPD_DV_ONLY = """
+    <MPD>
+      <Period id="main">
+        <AdaptationSet mimeType="video/mp4">
+          <Representation codecs="dvh1.05.02.06,ec-3" />
+        </AdaptationSet>
+      </Period>
+    </MPD>
+    """
+
+    def test_manifest_video_codecs_detects_dv_and_normal_video(self):
+        codecs = app_module.manifest_video_codecs(self.MPD_WITH_ALTERNATIVE)
+        self.assertEqual(codecs["dvh1"], {"dvh1"})
+        self.assertEqual(codecs["other"], {"avc1"})
+
+    def test_manifest_video_codecs_detects_hls_dv_codec(self):
+        codecs = app_module.manifest_video_codecs(
+            '#EXT-X-STREAM-INF:CODECS="dvh1.05.02,mp4a.40.2"'
+        )
+        self.assertEqual(codecs["dvh1"], {"dvh1"})
+        self.assertEqual(codecs["other"], set())
+
+    def test_drop_dv_video_when_normal_alternative_exists(self):
+        args = ["https://example.com/index.mpd"]
+        with (
+            mock.patch.object(
+                app_module, "fetch_manifest_text", return_value=self.MPD_WITH_ALTERNATIVE
+            ),
+            mock.patch.object(
+                app_module,
+                "load_settings",
+                return_value=dict(app_module.DEFAULT_SETTINGS),
+            ),
+        ):
+            result = app_module.drop_dv_video_if_alternative(args)
+        self.assertEqual(
+            result,
+            args + ["-dv", "codecs=^(dvh1|dvhe|dva1|dvav)"],
+        )
+
+    def test_drop_dv_video_keeps_dv_only_manifest(self):
+        args = ["https://example.com/index.mpd"]
+        with (
+            mock.patch.object(
+                app_module, "fetch_manifest_text", return_value=self.MPD_DV_ONLY
+            ),
+            mock.patch.object(
+                app_module,
+                "load_settings",
+                return_value=dict(app_module.DEFAULT_SETTINGS),
+            ),
+        ):
+            result = app_module.drop_dv_video_if_alternative(args)
+        self.assertEqual(result, args)
+
+    def test_drop_dv_video_can_be_disabled(self):
+        args = ["https://example.com/index.mpd"]
+        settings = dict(app_module.DEFAULT_SETTINGS)
+        settings["avoid_dv_video"] = False
+        with (
+            mock.patch.object(
+                app_module, "fetch_manifest_text", return_value=self.MPD_WITH_ALTERNATIVE
+            ),
+            mock.patch.object(app_module, "load_settings", return_value=settings),
+        ):
+            result = app_module.drop_dv_video_if_alternative(args)
+        self.assertEqual(result, args)
+
+    def test_drop_dv_video_respects_existing_video_filters(self):
+        for args in (
+            ["https://example.com/index.mpd", "-dv", "role=main"],
+            ["https://example.com/index.mpd", "-sv", "id=^(1|2)$:for=all"],
+        ):
+            with self.subTest(args=args):
+                with (
+                    mock.patch.object(
+                        app_module,
+                        "fetch_manifest_text",
+                        return_value=self.MPD_WITH_ALTERNATIVE,
+                    ),
+                    mock.patch.object(
+                        app_module,
+                        "load_settings",
+                        return_value=dict(app_module.DEFAULT_SETTINGS),
+                    ),
+                ):
+                    result = app_module.drop_dv_video_if_alternative(args)
+                self.assertEqual(result, args)
+
+    def test_parse_command_adds_dv_drop_filter(self):
+        command = (
+            'N_m3u8DL-RE.exe "https://example.com/index.mpd" '
+            '"-sv" "res=^720x:for=best"'
+        )
+        with (
+            mock.patch.object(
+                app_module, "fetch_manifest_text", return_value=self.MPD_WITH_ALTERNATIVE
+            ),
+            mock.patch.object(
+                app_module,
+                "load_settings",
+                return_value=dict(app_module.DEFAULT_SETTINGS),
+            ),
+        ):
+            argv = app_module.parse_command(command)
+        self.assertIn("-dv", argv)
+        self.assertIn("codecs=^(dvh1|dvhe|dva1|dvav)", argv)
 
 
 if __name__ == "__main__":

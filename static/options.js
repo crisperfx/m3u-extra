@@ -4,6 +4,7 @@ const folderMoviesEl = document.getElementById('folderMovies');
 const folderSeriesEl = document.getElementById('folderSeries');
 const folderUploaderEl = document.getElementById('folderUploaderTag');
 const folderResolutionEl = document.getElementById('folderResolutionTag');
+const avoidDvVideoEl = document.getElementById('avoidDvVideo');
 const autoStartEl = document.getElementById('autoStart');
 const saveBtn = document.getElementById('saveOptions');
 const errorEl = document.getElementById('error');
@@ -30,6 +31,7 @@ async function loadOptions() {
     folderSeriesEl.checked = data.folder_series === true;
     folderUploaderEl.checked = data.folder_uploader_tag === true;
     folderResolutionEl.checked = data.folder_resolution_tag === true;
+    avoidDvVideoEl.checked = data.avoid_dv_video !== false;
     autoStartEl.checked = data.auto_start !== false;
     savedEl.hidden = true;
   } catch (e) {
@@ -51,6 +53,7 @@ saveBtn.onclick = async () => {
         folder_series: folderSeriesEl.checked,
         folder_uploader_tag: folderUploaderEl.checked,
         folder_resolution_tag: folderResolutionEl.checked,
+        avoid_dv_video: avoidDvVideoEl.checked,
         auto_start: autoStartEl.checked
       })
     });
