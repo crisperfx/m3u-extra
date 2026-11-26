@@ -1296,6 +1296,15 @@ class Job:
         self.launch()
         return True
 
+    def run_probe(self):
+        with _jobs_lock:
+            if self.status not in ("queued", "running") or not self.needs_stream_selection:
+                return False
+            self.status = "running"
+            self.phase = "streams controleren"
+        self._run()
+        return True
+
     def update_streams(self, selectors):
         command = rewrite_stream_selectors(self.command, selectors)
         argv = parse_command(command, title_override=self.title_override)
@@ -1488,9 +1497,11 @@ def health():
     )
 
 
-def enqueue_job(command, argv, queue=None, title_override=None):
+def enqueue_job(command, argv, queue=None, title_override=None, probe_now=None):
     if queue is None:
         queue = not bool(load_settings().get("auto_start", True))
+    if probe_now is None:
+        probe_now = queue
     with _jobs_lock:
         if not queue:
             active = sum(1 for item in _jobs.values() if item.status == "running")
@@ -1500,14 +1511,19 @@ def enqueue_job(command, argv, queue=None, title_override=None):
             command,
             argv,
             title_override=title_override,
-            probe_streams=queue,
+            probe_streams=probe_now,
         )
         if not queue:
             job.status = "running"
             job.phase = "initialiseren"
+        elif probe_now:
+            job.status = "running"
+            job.phase = "streams controleren"
         _jobs[job.id] = job
     if not queue:
         job.launch()
+    elif probe_now:
+        job.run_probe()
     return job
 
 
@@ -1646,6 +1662,22 @@ def job_stream(job_id):
     )
 
 
+def start_queued_job(job):
+    global _queue_pump_active
+    with _queue_pump_lock:
+        with _jobs_lock:
+            active = sum(1 for item in _jobs.values() if item.status == "running")
+            if active >= MAX_CONCURRENT:
+                _queue_pump_active = True
+                return 0
+            if job.status != "queued":
+                return 0
+            job.status = "running"
+            job.phase = "initialiseren"
+    job.launch()
+    return 1
+
+
 def pump_queue_once():
     global _queue_pump_active
     to_start = []
@@ -1703,7 +1735,7 @@ def update_job_streams(job_id):
         was_probe = job.status == "needs_selection"
         info = job.update_streams(selectors)
         if was_probe:
-            start_queue()
+            start_queued_job(job)
         return jsonify(info)
     except RuntimeError as exc:
         return jsonify({"error": str(exc)}), 409

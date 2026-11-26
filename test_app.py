@@ -489,6 +489,12 @@ class SettingsAndQueueTests(unittest.TestCase):
                 mock.patch.object(app_module, "SETTINGS_FILE", path),
                 mock.patch.object(app_module, "_jobs", {}),
                 mock.patch.object(app_module.Job, "launch") as launch,
+                mock.patch.object(
+                    app_module.Job,
+                    "run_probe",
+                    autospec=True,
+                    side_effect=lambda job: setattr(job, "status", "needs_selection"),
+                ) as probe,
                 mock.patch.object(app_module, "fetch_manifest_text", return_value=None),
             ):
                 response = app_module.app.test_client().post(
@@ -496,8 +502,9 @@ class SettingsAndQueueTests(unittest.TestCase):
                 )
                 self.assertEqual(response.status_code, 201)
                 job = app_module._jobs[response.get_json()["id"]]
-                self.assertEqual(job.status, "queued")
+                self.assertEqual(job.status, "needs_selection")
                 self.assertTrue(job.needs_stream_selection)
+                probe.assert_called_once()
                 launch.assert_not_called()
 
     def test_explicit_start_overrides_auto_start_false(self):
@@ -545,9 +552,16 @@ class SettingsAndQueueTests(unittest.TestCase):
             argv[argv.index("--save-name") + 1], "The Odyssey (2026) YTS"
         )
 
-    def test_queue_job_is_not_started(self):
+    def test_queue_job_waits_for_stream_selection(self):
         with (
             mock.patch.object(app_module, "_jobs", {}),
+            mock.patch.object(app_module.Job, "launch") as launch,
+            mock.patch.object(
+                app_module.Job,
+                "run_probe",
+                autospec=True,
+                side_effect=lambda job: setattr(job, "status", "needs_selection"),
+            ) as probe,
             mock.patch.object(app_module, "fetch_manifest_text", return_value=None),
         ):
             response = app_module.app.test_client().post(
@@ -559,29 +573,32 @@ class SettingsAndQueueTests(unittest.TestCase):
             )
             self.assertEqual(response.status_code, 201)
             job = app_module._jobs[response.get_json()["id"]]
-            self.assertEqual(job.status, "queued")
+            self.assertEqual(job.status, "needs_selection")
+            probe.assert_called_once()
+            launch.assert_not_called()
 
     def test_start_queue_launches_queued_jobs(self):
+        job = app_module.Job(
+            'N_m3u8DL-RE.exe "https://example.com/index.mpd"',
+            ["N_m3u8DL-RE", "https://example.com/index.mpd"],
+        )
         with (
-            mock.patch.object(app_module, "_jobs", {}),
-            mock.patch.object(app_module, "fetch_manifest_text", return_value=None),
+            mock.patch.object(app_module, "_jobs", {job.id: job}),
             mock.patch.object(app_module.Job, "launch") as launch,
         ):
-            client = app_module.app.test_client()
-            client.post(
-                "/api/jobs",
-                json={
-                    "command": 'N_m3u8DL-RE.exe "https://example.com/index.mpd"',
-                    "queue": True,
-                },
-            )
-            response = client.post("/api/jobs/queue/start")
+            response = app_module.app.test_client().post("/api/jobs/queue/start")
             self.assertEqual(response.get_json()["started"], 1)
             launch.assert_called_once()
 
     def test_clear_history_preserves_queued_jobs(self):
         with (
             mock.patch.object(app_module, "_jobs", {}),
+            mock.patch.object(
+                app_module.Job,
+                "run_probe",
+                autospec=True,
+                side_effect=lambda job: setattr(job, "status", "needs_selection"),
+            ),
             mock.patch.object(app_module, "fetch_manifest_text", return_value=None),
         ):
             client = app_module.app.test_client()
@@ -700,6 +717,38 @@ class JobStreamEditTests(unittest.TestCase):
         self.assertEqual(job.status, "needs_selection")
         self.assertEqual(job.streams.info()["video"][0]["track"], "1")
 
+    def test_queued_job_runs_probe_during_enqueue(self):
+        command = 'N_m3u8DL-RE.exe "https://example.com/index.mpd"'
+
+        class FakeStdout:
+            def __iter__(self):
+                return iter([
+                    "INFO : Selected streams:\n",
+                    "INFO : Aud Original | 1280 Kbps | 15 | ac-3 | eng | 6CH\n",
+                ])
+
+        class FakeProc:
+            stdout = FakeStdout()
+
+            def wait(self):
+                return 0
+
+        with (
+            mock.patch.object(app_module, "_jobs", {}),
+            mock.patch.object(app_module.subprocess, "Popen", return_value=FakeProc()) as popen,
+            mock.patch.object(app_module, "fetch_manifest_text", return_value=None),
+            mock.patch.object(app_module, "pump_queue_once"),
+            mock.patch.object(app_module, "write_archived_info"),
+        ):
+            job = app_module.enqueue_job(
+                command, ["N_m3u8DL-RE", "https://example.com/index.mpd"], queue=True
+            )
+        self.addCleanup(job.close_log)
+        self.addCleanup(lambda: app_module.log_file_path(job.id).unlink(missing_ok=True))
+        self.assertIn("--skip-download", popen.call_args.args[0])
+        self.assertEqual(job.status, "needs_selection")
+        self.assertEqual(job.streams.info()["audio"][0]["track"], "15")
+
     def test_probe_argv_adds_skip_download_once(self):
         argv = ["N_m3u8DL-RE", "https://example.com/index.mpd"]
         self.assertEqual(
@@ -774,15 +823,46 @@ class JobStreamEditTests(unittest.TestCase):
         with (
             mock.patch.object(app_module, "_jobs", {job.id: job}),
             mock.patch.object(app_module, "fetch_manifest_text", return_value=None),
-            mock.patch.object(app_module, "start_queue") as start,
+            mock.patch.object(
+                app_module,
+                "start_queued_job",
+                side_effect=lambda item: setattr(item, "status", "running"),
+            ) as start,
         ):
             response = app_module.app.test_client().post(
                 f"/api/jobs/{job.id}/streams",
                 json={"tracks": {"audio": ["15"]}},
             )
         self.assertEqual(response.status_code, 200)
+        self.assertEqual(job.status, "running")
+        start.assert_called_once_with(job)
+
+    def test_start_queued_job_starts_without_queue_pump(self):
+        job = app_module.Job("N_m3u8DL-RE", ["N_m3u8DL-RE"])
+        with (
+            mock.patch.object(app_module, "_jobs", {job.id: job}),
+            mock.patch.object(app_module.Job, "launch") as launch,
+            mock.patch.object(app_module, "_queue_pump_active", False),
+        ):
+            started = app_module.start_queued_job(job)
+        self.assertEqual(started, 1)
+        self.assertEqual(job.status, "running")
+        launch.assert_called_once()
+
+    def test_start_queued_job_keeps_job_waiting_when_full(self):
+        job = app_module.Job("N_m3u8DL-RE", ["N_m3u8DL-RE"])
+        running = app_module.Job("N_m3u8DL-RE", ["N_m3u8DL-RE"])
+        running.status = "running"
+        with (
+            mock.patch.object(app_module, "_jobs", {job.id: job, running.id: running}),
+            mock.patch.object(app_module.Job, "launch") as launch,
+            mock.patch.object(app_module, "MAX_CONCURRENT", 1),
+            mock.patch.object(app_module, "_queue_pump_active", False),
+        ):
+            started = app_module.start_queued_job(job)
+        self.assertEqual(started, 0)
         self.assertEqual(job.status, "queued")
-        start.assert_called_once()
+        launch.assert_not_called()
 
     def test_edit_streams_endpoint_rejects_running_job(self):
         job = app_module.Job("N_m3u8DL-RE", ["N_m3u8DL-RE"])
@@ -913,6 +993,22 @@ class StaticAssetTests(unittest.TestCase):
         self.assertIn("metaName=e&&e.meta?wp2Name(e)", popup)
         self.assertIn('"manifest"!==titleName.toLowerCase()', history)
         self.assertIn('"manifest"!==titleName.toLowerCase()', popup)
+
+    def test_extension_version_labels_use_installed_version(self):
+        root = Path(app_module.__file__).resolve().parent
+        popup = root.joinpath("extension/src/ui/popup.min.js").read_text(encoding="utf-8")
+        background = root.joinpath("extension/src/library/background/bundle.min.js").read_text(encoding="utf-8")
+        readme = root.joinpath("README.md").read_text(encoding="utf-8")
+        self.assertIn('c.textContent="Active: "+(t||"unknown")', popup)
+        self.assertIn('a.textContent="Version Available: "+(r||"unknown")', popup)
+        self.assertNotIn('c.textContent="Active: "+(r||t)', popup)
+        self.assertNotIn('c.textContent="Active: "+r.data.version', popup)
+        self.assertNotIn("if(!r)r=t;", popup)
+        self.assertNotIn("e.wp2Live&&e.wp2Live.version", popup)
+        self.assertIn("async function liveAvailableVersion()", background)
+        self.assertIn('if("LIVE_VERSION"===e.type){liveAvailableVersion()', background)
+        self.assertIn("Chrome-installed version as **Active**", readme)
+        self.assertIn("**Version Available** shows `unknown`", readme)
 
     def test_probe_queue_ui_present(self):
         js = app_module.STATIC_DIR.joinpath("app.js").read_text(encoding="utf-8")
